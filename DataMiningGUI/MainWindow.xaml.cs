@@ -24,13 +24,13 @@ namespace DataMiningGUI
     public partial class MainWindow : Window
     {
         public string databasePath = @"C:\Users\BRA008\Modular_Projects\LocalDatabases";
+        public List<PatientClass> allPatients = new List<PatientClass>();
         public MainWindow()
         {
             InitializeComponent();
             List<string> jsonFiles = new List<string>();
             jsonFiles = AriaDataBaseJsonReader.ReturnPatientFileNames(Path.Combine(databasePath, "2025"), jsonFiles, "*.json", SearchOption.AllDirectories);
             // Started doing these in 2020!
-            List<PatientClass> allPatients = new List<PatientClass>();
             allPatients = AriaDataBaseJsonReader.ReadPatientFiles(jsonFiles);
         }
     }
