@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -30,6 +31,9 @@ namespace DataMiningGUI
 
         private CancellationTokenSource _loadCancellationTokenSource;
         private readonly object _patientsLock = new object();
+
+        // Filter configuration
+        private FilterConfiguration _currentFilter = new FilterConfiguration();
 
         #endregion
 
@@ -139,6 +143,40 @@ namespace DataMiningGUI
             SearchTextBox.Clear();
         }
 
+        /// <summary>
+        /// Opens the advanced filter window
+        /// </summary>
+        private void OpenFilter_Click(object sender, RoutedEventArgs e)
+        {
+            List<PatientClass> patientsSnapshot;
+            lock (_patientsLock)
+            {
+                patientsSnapshot = _allPatients.ToList();
+            }
+
+            var filterWindow = new FilterWindow(_currentFilter, patientsSnapshot)
+            {
+                Owner = this
+            };
+
+            if (filterWindow.ShowDialog() == true && filterWindow.FilterApplied)
+            {
+                _currentFilter = filterWindow.FilterConfig;
+                UpdateFilterUI();
+                UpdateDisplayedPatients();
+            }
+        }
+
+        /// <summary>
+        /// Clears the current filter
+        /// </summary>
+        private void ClearFilter_Click(object sender, RoutedEventArgs e)
+        {
+            _currentFilter.Clear();
+            UpdateFilterUI();
+            UpdateDisplayedPatients();
+        }
+
         #endregion
 
         #region Patient Loading
@@ -232,7 +270,7 @@ namespace DataMiningGUI
         #region Display Updates
 
         /// <summary>
-        /// Updates the displayed patient list based on current patients and search filter
+        /// Updates the displayed patient list based on current patients, search filter, and advanced filter
         /// </summary>
         private void UpdateDisplayedPatients()
         {
@@ -249,42 +287,44 @@ namespace DataMiningGUI
 
             foreach (var patient in patientsSnapshot)
             {
-                // Apply MRN filter if search text is provided
+                // Apply MRN search filter if provided
                 if (!string.IsNullOrEmpty(searchText))
                 {
                     if (patient.MRN == null ||
-                        !patient.MRN.Contains(searchText))
+                        patient.MRN.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) < 0)
                     {
                         continue;
                     }
                 }
 
-                // Create display items for each plan in each course
-                if (patient.Courses != null)
+                // Process patient courses and plans
+                if (patient.Courses != null && patient.Courses.Any())
                 {
                     foreach (var course in patient.Courses)
                     {
-                        if (course.TreatmentPlans != null)
+                        if (course.TreatmentPlans != null && course.TreatmentPlans.Any())
                         {
                             foreach (var plan in course.TreatmentPlans)
                             {
-                                filteredItems.Add(new PatientDisplayItem
-                                {
-                                    MRN = patient.MRN,
-                                    PatientName = FormatPatientName(patient.Name_First, patient.Name_Last),
-                                    CourseName = course.Name,
-                                    PlanName = plan.PlanName,
-                                    PlanType = plan.PlanType,
-                                    PlannedBy = plan.PlannedBy,
-                                    ApprovalStatus = plan.Review?.ApprovalStatus ?? "N/A",
-                                    ReviewDateTime = FormatReviewDateTime(plan.Review?.ReviewTime),
-                                    ReviewDateTimeSortable = GetSortableDateTime(plan.Review?.ReviewTime)
-                                });
+                                // Get BeamSets for additional info
+                                var beamSets = plan.BeamSets;
+                                var firstBeamSet = beamSets?.FirstOrDefault();
+
+                                // Apply advanced filter
+                                var context = new FilterContext(patient, course, plan, firstBeamSet);
+                                if (!PatientFilterEngine.Matches(_currentFilter, context))
+                                    continue;
+
+                                filteredItems.Add(CreateDisplayItem(patient, course, plan, firstBeamSet));
                             }
                         }
                         else
                         {
-                            // Course exists but has no plans
+                            // Course exists but has no plans - check filter
+                            var context = new FilterContext(patient, course);
+                            if (!PatientFilterEngine.Matches(_currentFilter, context))
+                                continue;
+
                             filteredItems.Add(new PatientDisplayItem
                             {
                                 MRN = patient.MRN,
@@ -292,6 +332,10 @@ namespace DataMiningGUI
                                 CourseName = course.Name,
                                 PlanName = "(No plans)",
                                 PlanType = "N/A",
+                                MachineName = "N/A",
+                                NumberOfFractions = "N/A",
+                                DosePerFraction = "N/A",
+                                TotalDose = "N/A",
                                 PlannedBy = "N/A",
                                 ApprovalStatus = "N/A",
                                 ReviewDateTime = "N/A",
@@ -302,7 +346,11 @@ namespace DataMiningGUI
                 }
                 else
                 {
-                    // Patient has no courses
+                    // Patient has no courses - check filter
+                    var context = new FilterContext(patient);
+                    if (!PatientFilterEngine.Matches(_currentFilter, context))
+                        continue;
+
                     filteredItems.Add(new PatientDisplayItem
                     {
                         MRN = patient.MRN,
@@ -310,6 +358,10 @@ namespace DataMiningGUI
                         CourseName = "(No courses)",
                         PlanName = "(No plans)",
                         PlanType = "N/A",
+                        MachineName = "N/A",
+                        NumberOfFractions = "N/A",
+                        DosePerFraction = "N/A",
+                        TotalDose = "N/A",
                         PlannedBy = "N/A",
                         ApprovalStatus = "N/A",
                         ReviewDateTime = "N/A",
@@ -335,6 +387,93 @@ namespace DataMiningGUI
         }
 
         /// <summary>
+        /// Creates a display item from patient/course/plan/beamset data
+        /// </summary>
+        private PatientDisplayItem CreateDisplayItem(PatientClass patient, CourseClass course,
+            TreatmentPlanClass plan, BeamSetClass beamSet)
+        {
+            // Extract dose info
+            var normalization = beamSet?.PlanNormalization;
+            var prescriptionTarget = beamSet?.Prescription?.PrescriptionTargets?.FirstOrDefault();
+
+            int? fractions = normalization?.NumberOfFractions > 0 ? normalization.NumberOfFractions
+                : prescriptionTarget?.NumberOfFractions > 0 ? prescriptionTarget.NumberOfFractions
+                : (int?)null;
+
+            double? dosePerFx = normalization?.Dose_per_Fraction > 0 ? normalization.Dose_per_Fraction
+                : prescriptionTarget?.DosePerFraction > 0 ? prescriptionTarget.DosePerFraction
+                : (double?)null;
+
+            double? totalDose = (fractions.HasValue && dosePerFx.HasValue)
+                ? fractions.Value * dosePerFx.Value
+                : normalization?.DoseValue_cGy > 0 ? normalization.DoseValue_cGy
+                : (double?)null;
+
+            return new PatientDisplayItem
+            {
+                MRN = patient.MRN,
+                PatientName = FormatPatientName(patient.Name_First, patient.Name_Last),
+                CourseName = course.Name,
+                PlanName = plan.PlanName,
+                PlanType = plan.PlanType ?? "N/A",
+                MachineName = beamSet?.MachineName ?? "N/A",
+                NumberOfFractions = fractions?.ToString() ?? "N/A",
+                DosePerFraction = dosePerFx?.ToString("F1") ?? "N/A",
+                TotalDose = totalDose?.ToString("F1") ?? "N/A",
+                PlannedBy = plan.PlannedBy ?? "N/A",
+                ApprovalStatus = plan.Review?.ApprovalStatus ?? "N/A",
+                ReviewDateTime = FormatReviewDateTime(plan.Review?.ReviewTime),
+                ReviewDateTimeSortable = GetSortableDateTime(plan.Review?.ReviewTime)
+            };
+        }
+
+        /// <summary>
+        /// Updates the filter UI elements based on current filter state
+        /// </summary>
+        private void UpdateFilterUI()
+        {
+            bool hasActiveFilter = _currentFilter.IsActive && _currentFilter.HasCriteria;
+
+            ActiveFilterBorder.Visibility = hasActiveFilter ? Visibility.Visible : Visibility.Collapsed;
+            ClearFilterButton.Visibility = hasActiveFilter ? Visibility.Visible : Visibility.Collapsed;
+
+            if (hasActiveFilter)
+            {
+                ActiveFilterText.Text = BuildFilterSummary();
+            }
+        }
+
+        /// <summary>
+        /// Builds a summary string of the current filter
+        /// </summary>
+        private string BuildFilterSummary()
+        {
+            if (!_currentFilter.HasCriteria)
+                return string.Empty;
+
+            var sb = new StringBuilder();
+            var enabledCriteria = _currentFilter.Criteria.Where(c => c.IsEnabled).ToList();
+
+            for (int i = 0; i < enabledCriteria.Count && i < 3; i++)
+            {
+                var c = enabledCriteria[i];
+                if (i > 0)
+                {
+                    var prevLogic = enabledCriteria[i - 1].LogicalOperator;
+                    sb.Append(prevLogic == LogicalOperator.And ? " AND " : " OR ");
+                }
+                sb.Append($"{EnumHelper.GetDescription(c.Field)} {EnumHelper.GetDescription(c.Operator)} '{c.Value}'");
+            }
+
+            if (enabledCriteria.Count > 3)
+            {
+                sb.Append($" (+{enabledCriteria.Count - 3} more)");
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
         /// Sets the loading state of the UI
         /// </summary>
         private void SetLoadingState(bool isLoading, string message = null)
@@ -355,6 +494,10 @@ namespace DataMiningGUI
             {
                 checkBox.IsEnabled = !isLoading;
             }
+
+            // Disable filter buttons while loading
+            OpenFilterButton.IsEnabled = !isLoading;
+            ClearFilterButton.IsEnabled = !isLoading;
         }
 
         #endregion
@@ -438,6 +581,10 @@ namespace DataMiningGUI
         private string _courseName;
         private string _planName;
         private string _planType;
+        private string _machineName;
+        private string _numberOfFractions;
+        private string _dosePerFraction;
+        private string _totalDose;
         private string _plannedBy;
         private string _approvalStatus;
         private string _reviewDateTime;
@@ -471,6 +618,30 @@ namespace DataMiningGUI
         {
             get => _planType;
             set { _planType = value; OnPropertyChanged(nameof(PlanType)); }
+        }
+
+        public string MachineName
+        {
+            get => _machineName;
+            set { _machineName = value; OnPropertyChanged(nameof(MachineName)); }
+        }
+
+        public string NumberOfFractions
+        {
+            get => _numberOfFractions;
+            set { _numberOfFractions = value; OnPropertyChanged(nameof(NumberOfFractions)); }
+        }
+
+        public string DosePerFraction
+        {
+            get => _dosePerFraction;
+            set { _dosePerFraction = value; OnPropertyChanged(nameof(DosePerFraction)); }
+        }
+
+        public string TotalDose
+        {
+            get => _totalDose;
+            set { _totalDose = value; OnPropertyChanged(nameof(TotalDose)); }
         }
 
         public string PlannedBy
