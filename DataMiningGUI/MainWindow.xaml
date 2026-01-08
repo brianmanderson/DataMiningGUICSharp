@@ -28,6 +28,16 @@
             <Setter Property="Margin" Value="5,0"/>
             <Setter Property="MinWidth" Value="80"/>
         </Style>
+        
+        <Style x:Key="PaginationButtonStyle" TargetType="Button">
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="Margin" Value="3,0"/>
+            <Setter Property="MinWidth" Value="30"/>
+            <Setter Property="Background" Value="#2196F3"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
     </Window.Resources>
 
     <Grid>
@@ -134,12 +144,48 @@
                             Visibility="Collapsed"/>
                 </StackPanel>
 
+                <!-- Display Count and Pagination Controls -->
                 <StackPanel Grid.Column="5" Orientation="Horizontal">
                     <TextBlock Text="Displaying: " VerticalAlignment="Center"/>
                     <TextBlock x:Name="DisplayCountText" Text="0" VerticalAlignment="Center" FontWeight="Bold"/>
                     <TextBlock Text=" of " VerticalAlignment="Center"/>
                     <TextBlock x:Name="TotalCountText" Text="0" VerticalAlignment="Center" FontWeight="Bold"/>
-                    <TextBlock Text=" plans" VerticalAlignment="Center"/>
+                    <TextBlock Text=" plans" VerticalAlignment="Center" Margin="0,0,15,0"/>
+                    
+                    <!-- Pagination Controls -->
+                    <StackPanel x:Name="PaginationPanel" Orientation="Horizontal" Visibility="Collapsed">
+                        <Border BorderBrush="#CCCCCC" BorderThickness="1,0,0,0" Padding="15,0,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <Button x:Name="FirstPageButton" 
+                                        Content="⏮" 
+                                        ToolTip="First Page"
+                                        Click="FirstPage_Click"
+                                        Style="{StaticResource PaginationButtonStyle}"/>
+                                <Button x:Name="PrevPageButton" 
+                                        Content="◀" 
+                                        ToolTip="Previous Page"
+                                        Click="PrevPage_Click"
+                                        Style="{StaticResource PaginationButtonStyle}"/>
+                                
+                                <TextBlock Text="Page " VerticalAlignment="Center" Margin="8,0,3,0"/>
+                                <TextBlock x:Name="CurrentPageText" Text="1" VerticalAlignment="Center" FontWeight="Bold"/>
+                                <TextBlock Text=" of " VerticalAlignment="Center" Margin="3,0"/>
+                                <TextBlock x:Name="TotalPagesText" Text="1" VerticalAlignment="Center" FontWeight="Bold"/>
+                                
+                                <Button x:Name="NextPageButton" 
+                                        Content="▶" 
+                                        ToolTip="Next Page"
+                                        Click="NextPage_Click"
+                                        Style="{StaticResource PaginationButtonStyle}"
+                                        Margin="8,0,3,0"/>
+                                <Button x:Name="LastPageButton" 
+                                        Content="⏭" 
+                                        ToolTip="Last Page"
+                                        Click="LastPage_Click"
+                                        Style="{StaticResource PaginationButtonStyle}"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
                 </StackPanel>
             </Grid>
         </Border>

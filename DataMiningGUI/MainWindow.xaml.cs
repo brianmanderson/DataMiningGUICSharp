@@ -35,6 +35,11 @@ namespace DataMiningGUI
         // Filter configuration
         private FilterConfiguration _currentFilter = new FilterConfiguration();
 
+        // Pagination fields
+        private int _currentPage = 1;
+        private int _totalPages = 1;
+        private List<PatientDisplayItem> _allFilteredItems = new List<PatientDisplayItem>();
+
         #endregion
 
         #region Constructor
@@ -152,6 +157,7 @@ namespace DataMiningGUI
         /// </summary>
         private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
+            _currentPage = 1; // Reset to first page on new search
             UpdateDisplayedPatients();
         }
 
@@ -182,6 +188,7 @@ namespace DataMiningGUI
             if (filterWindow.ShowDialog() == true && filterWindow.FilterApplied)
             {
                 _currentFilter = filterWindow.FilterConfig;
+                _currentPage = 1; // Reset to first page when filter changes
                 UpdateFilterUI();
                 UpdateDisplayedPatients();
             }
@@ -193,8 +200,61 @@ namespace DataMiningGUI
         private void ClearFilter_Click(object sender, RoutedEventArgs e)
         {
             _currentFilter.Clear();
+            _currentPage = 1; // Reset to first page when filter is cleared
             UpdateFilterUI();
             UpdateDisplayedPatients();
+        }
+
+        #endregion
+
+        #region Pagination Event Handlers
+
+        /// <summary>
+        /// Navigates to the first page
+        /// </summary>
+        private void FirstPage_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPage > 1)
+            {
+                _currentPage = 1;
+                UpdatePageDisplay();
+            }
+        }
+
+        /// <summary>
+        /// Navigates to the previous page
+        /// </summary>
+        private void PrevPage_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPage > 1)
+            {
+                _currentPage--;
+                UpdatePageDisplay();
+            }
+        }
+
+        /// <summary>
+        /// Navigates to the next page
+        /// </summary>
+        private void NextPage_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPage < _totalPages)
+            {
+                _currentPage++;
+                UpdatePageDisplay();
+            }
+        }
+
+        /// <summary>
+        /// Navigates to the last page
+        /// </summary>
+        private void LastPage_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPage < _totalPages)
+            {
+                _currentPage = _totalPages;
+                UpdatePageDisplay();
+            }
         }
 
         #endregion
@@ -277,7 +337,8 @@ namespace DataMiningGUI
                     _allPatients = loadedPatients;
                 }
 
-                // Update display on UI thread
+                // Reset pagination and update display on UI thread
+                _currentPage = 1;
                 UpdateDisplayedPatients();
 
                 // Show loaded info
@@ -321,6 +382,7 @@ namespace DataMiningGUI
         private void UpdateDisplayedPatients()
         {
             _displayItems.Clear();
+            _allFilteredItems.Clear();
 
             List<PatientClass> patientsSnapshot;
             lock (_patientsLock)
@@ -416,20 +478,67 @@ namespace DataMiningGUI
                 }
             }
 
-            // Sort by review date (most recent first) and take first 50
-            var displayList = filteredItems
+            // Sort by review date (most recent first)
+            _allFilteredItems = filteredItems
                 .OrderByDescending(item => item.ReviewDateTimeSortable)
-                .Take(MaxDisplayCount)
                 .ToList();
 
-            foreach (var item in displayList)
+            // Calculate total pages
+            _totalPages = _allFilteredItems.Count > 0
+                ? (int)Math.Ceiling((double)_allFilteredItems.Count / MaxDisplayCount)
+                : 1;
+
+            // Ensure current page is valid
+            if (_currentPage > _totalPages)
+                _currentPage = _totalPages;
+            if (_currentPage < 1)
+                _currentPage = 1;
+
+            // Update pagination controls visibility
+            UpdatePaginationControls();
+
+            // Display current page
+            UpdatePageDisplay();
+        }
+
+        /// <summary>
+        /// Updates the display with the current page of items
+        /// </summary>
+        private void UpdatePageDisplay()
+        {
+            _displayItems.Clear();
+
+            // Calculate the range of items to display
+            int startIndex = (_currentPage - 1) * MaxDisplayCount;
+            int endIndex = Math.Min(startIndex + MaxDisplayCount, _allFilteredItems.Count);
+
+            // Add items for the current page
+            for (int i = startIndex; i < endIndex; i++)
             {
-                _displayItems.Add(item);
+                _displayItems.Add(_allFilteredItems[i]);
             }
 
-            // Update counts
-            TotalCountText.Text = filteredItems.Count.ToString();
+            // Update counts and page info
+            TotalCountText.Text = _allFilteredItems.Count.ToString();
             DisplayCountText.Text = _displayItems.Count.ToString();
+            CurrentPageText.Text = _currentPage.ToString();
+            TotalPagesText.Text = _totalPages.ToString();
+
+            // Update button states
+            FirstPageButton.IsEnabled = _currentPage > 1;
+            PrevPageButton.IsEnabled = _currentPage > 1;
+            NextPageButton.IsEnabled = _currentPage < _totalPages;
+            LastPageButton.IsEnabled = _currentPage < _totalPages;
+        }
+
+        /// <summary>
+        /// Updates the visibility and state of pagination controls
+        /// </summary>
+        private void UpdatePaginationControls()
+        {
+            // Show pagination only if there are more items than can fit on one page
+            bool showPagination = _allFilteredItems.Count > MaxDisplayCount;
+            PaginationPanel.Visibility = showPagination ? Visibility.Visible : Visibility.Collapsed;
         }
 
         /// <summary>
