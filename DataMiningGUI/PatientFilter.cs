@@ -111,48 +111,24 @@ namespace DataMiningGUI
 
     #endregion
 
-    #region Filter Criterion
+    #region Base Filter Item
 
     /// <summary>
-    /// Represents a single filter criterion
+    /// Base class for filter items (either a criterion or a group)
     /// </summary>
-    public class FilterCriterion : INotifyPropertyChanged
+    public abstract class FilterItemBase : INotifyPropertyChanged
     {
-        private FilterField _field;
-        private FilterOperator _operator;
-        private string _value;
         private LogicalOperator _logicalOperator;
         private bool _isEnabled;
 
-        public FilterCriterion()
+        protected FilterItemBase()
         {
-            _field = FilterField.PlanName;
-            _operator = FilterOperator.Contains;
-            _value = string.Empty;
             _logicalOperator = LogicalOperator.And;
             _isEnabled = true;
         }
 
-        public FilterField Field
-        {
-            get => _field;
-            set { _field = value; OnPropertyChanged(nameof(Field)); }
-        }
-
-        public FilterOperator Operator
-        {
-            get => _operator;
-            set { _operator = value; OnPropertyChanged(nameof(Operator)); }
-        }
-
-        public string Value
-        {
-            get => _value;
-            set { _value = value; OnPropertyChanged(nameof(Value)); }
-        }
-
         /// <summary>
-        /// How this criterion combines with the NEXT criterion
+        /// How this item combines with the NEXT item
         /// </summary>
         public LogicalOperator LogicalOperator
         {
@@ -166,6 +142,16 @@ namespace DataMiningGUI
             set { _isEnabled = value; OnPropertyChanged(nameof(IsEnabled)); }
         }
 
+        /// <summary>
+        /// Whether this is a group (true) or a simple criterion (false)
+        /// </summary>
+        public abstract bool IsGroup { get; }
+
+        /// <summary>
+        /// Gets a display summary of this item
+        /// </summary>
+        public abstract string DisplaySummary { get; }
+
         public event PropertyChangedEventHandler PropertyChanged;
 
         protected void OnPropertyChanged(string propertyName)
@@ -174,9 +160,55 @@ namespace DataMiningGUI
         }
 
         /// <summary>
-        /// Creates a deep copy of this criterion
+        /// Creates a deep copy of this item
         /// </summary>
-        public FilterCriterion Clone()
+        public abstract FilterItemBase Clone();
+    }
+
+    #endregion
+
+    #region Filter Criterion
+
+    /// <summary>
+    /// Represents a single filter criterion
+    /// </summary>
+    public class FilterCriterion : FilterItemBase
+    {
+        private FilterField _field;
+        private FilterOperator _operator;
+        private string _value;
+
+        public FilterCriterion()
+        {
+            _field = FilterField.PlanName;
+            _operator = FilterOperator.Contains;
+            _value = string.Empty;
+        }
+
+        public FilterField Field
+        {
+            get => _field;
+            set { _field = value; OnPropertyChanged(nameof(Field)); OnPropertyChanged(nameof(DisplaySummary)); }
+        }
+
+        public FilterOperator Operator
+        {
+            get => _operator;
+            set { _operator = value; OnPropertyChanged(nameof(Operator)); OnPropertyChanged(nameof(DisplaySummary)); }
+        }
+
+        public string Value
+        {
+            get => _value;
+            set { _value = value; OnPropertyChanged(nameof(Value)); OnPropertyChanged(nameof(DisplaySummary)); }
+        }
+
+        public override bool IsGroup => false;
+
+        public override string DisplaySummary =>
+            $"{EnumHelper.GetDescription(Field)} {EnumHelper.GetDescription(Operator)} '{Value}'";
+
+        public override FilterItemBase Clone()
         {
             return new FilterCriterion
             {
@@ -191,26 +223,119 @@ namespace DataMiningGUI
 
     #endregion
 
+    #region Filter Group
+
+    /// <summary>
+    /// Represents a group of filter criteria with its own internal logic
+    /// </summary>
+    public class FilterGroup : FilterItemBase
+    {
+        private ObservableCollection<FilterItemBase> _items;
+        private string _groupName;
+
+        public FilterGroup()
+        {
+            _items = new ObservableCollection<FilterItemBase>();
+            _groupName = "Group";
+        }
+
+        public ObservableCollection<FilterItemBase> Items
+        {
+            get => _items;
+            set { _items = value; OnPropertyChanged(nameof(Items)); OnPropertyChanged(nameof(DisplaySummary)); }
+        }
+
+        public string GroupName
+        {
+            get => _groupName;
+            set { _groupName = value; OnPropertyChanged(nameof(GroupName)); OnPropertyChanged(nameof(DisplaySummary)); }
+        }
+
+        public override bool IsGroup => true;
+
+        public override string DisplaySummary
+        {
+            get
+            {
+                var enabledItems = Items.Where(i => i.IsEnabled).ToList();
+                if (!enabledItems.Any())
+                    return $"[{GroupName}: Empty]";
+
+                var parts = new List<string>();
+                for (int i = 0; i < enabledItems.Count && i < 2; i++)
+                {
+                    parts.Add(enabledItems[i].DisplaySummary);
+                }
+
+                var summary = string.Join(" | ", parts);
+                if (enabledItems.Count > 2)
+                    summary += $" (+{enabledItems.Count - 2} more)";
+
+                return $"[{GroupName}: {summary}]";
+            }
+        }
+
+        public bool HasEnabledItems => Items.Any(i => i.IsEnabled);
+
+        public override FilterItemBase Clone()
+        {
+            var clone = new FilterGroup
+            {
+                GroupName = this.GroupName,
+                LogicalOperator = this.LogicalOperator,
+                IsEnabled = this.IsEnabled
+            };
+
+            foreach (var item in this.Items)
+            {
+                clone.Items.Add(item.Clone());
+            }
+
+            return clone;
+        }
+    }
+
+    #endregion
+
     #region Filter Configuration
 
     /// <summary>
-    /// Contains all filter criteria and configuration
+    /// Contains all filter items and configuration
     /// </summary>
     public class FilterConfiguration : INotifyPropertyChanged
     {
-        private ObservableCollection<FilterCriterion> _criteria;
+        private ObservableCollection<FilterItemBase> _items;
         private bool _isActive;
 
         public FilterConfiguration()
         {
-            _criteria = new ObservableCollection<FilterCriterion>();
+            _items = new ObservableCollection<FilterItemBase>();
             _isActive = false;
         }
 
+        /// <summary>
+        /// The filter items (criteria and groups)
+        /// </summary>
+        public ObservableCollection<FilterItemBase> Items
+        {
+            get => _items;
+            set { _items = value; OnPropertyChanged(nameof(Items)); }
+        }
+
+        /// <summary>
+        /// Legacy property for backward compatibility - returns only simple criteria
+        /// </summary>
         public ObservableCollection<FilterCriterion> Criteria
         {
-            get => _criteria;
-            set { _criteria = value; OnPropertyChanged(nameof(Criteria)); }
+            get
+            {
+                var criteria = new ObservableCollection<FilterCriterion>();
+                foreach (var item in _items.OfType<FilterCriterion>())
+                {
+                    criteria.Add(item);
+                }
+                return criteria;
+            }
         }
 
         public bool IsActive
@@ -219,7 +344,10 @@ namespace DataMiningGUI
             set { _isActive = value; OnPropertyChanged(nameof(IsActive)); }
         }
 
-        public bool HasCriteria => _criteria != null && _criteria.Any(c => c.IsEnabled);
+        public bool HasItems => _items != null && _items.Any(i => i.IsEnabled);
+
+        // Legacy property
+        public bool HasCriteria => HasItems;
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -238,23 +366,24 @@ namespace DataMiningGUI
                 IsActive = this.IsActive
             };
 
-            foreach (var criterion in this.Criteria)
+            foreach (var item in this.Items)
             {
-                clone.Criteria.Add(criterion.Clone());
+                clone.Items.Add(item.Clone());
             }
 
             return clone;
         }
 
         /// <summary>
-        /// Clears all criteria
+        /// Clears all items
         /// </summary>
         public void Clear()
         {
-            _criteria.Clear();
+            _items.Clear();
             _isActive = false;
-            OnPropertyChanged(nameof(Criteria));
+            OnPropertyChanged(nameof(Items));
             OnPropertyChanged(nameof(IsActive));
+            OnPropertyChanged(nameof(HasItems));
             OnPropertyChanged(nameof(HasCriteria));
         }
     }
@@ -273,7 +402,7 @@ namespace DataMiningGUI
         public TreatmentPlanClass Plan { get; set; }
         public BeamSetClass BeamSet { get; set; }
 
-        public FilterContext(PatientClass patient, CourseClass course = null, 
+        public FilterContext(PatientClass patient, CourseClass course = null,
             TreatmentPlanClass plan = null, BeamSetClass beamSet = null)
         {
             Patient = patient;
@@ -299,44 +428,83 @@ namespace DataMiningGUI
         /// </summary>
         public static bool Matches(FilterConfiguration config, FilterContext context)
         {
-            if (config == null || !config.IsActive || !config.HasCriteria)
+            if (config == null || !config.IsActive || !config.HasItems)
                 return true;
 
-            var enabledCriteria = config.Criteria.Where(c => c.IsEnabled).ToList();
-            if (!enabledCriteria.Any())
+            var enabledItems = config.Items.Where(i => i.IsEnabled).ToList();
+            if (!enabledItems.Any())
                 return true;
 
-            // Evaluate criteria with AND/OR logic
-            // Group by OR - within each group, all criteria must match (AND)
-            // Between groups, any group matching is sufficient (OR)
+            return EvaluateItems(enabledItems, context);
+        }
+
+        /// <summary>
+        /// Evaluates a list of filter items with AND/OR logic
+        /// </summary>
+        private static bool EvaluateItems(List<FilterItemBase> items, FilterContext context)
+        {
+            if (!items.Any())
+                return true;
 
             bool? result = null;
             LogicalOperator pendingOperator = LogicalOperator.And;
 
-            foreach (var criterion in enabledCriteria)
+            foreach (var item in items)
             {
-                bool criterionResult = EvaluateCriterion(criterion, context);
+                bool itemResult = EvaluateItem(item, context);
 
                 if (result == null)
                 {
-                    result = criterionResult;
+                    result = itemResult;
                 }
                 else
                 {
                     if (pendingOperator == LogicalOperator.And)
                     {
-                        result = result.Value && criterionResult;
+                        result = result.Value && itemResult;
                     }
                     else // OR
                     {
-                        result = result.Value || criterionResult;
+                        result = result.Value || itemResult;
                     }
                 }
 
-                pendingOperator = criterion.LogicalOperator;
+                pendingOperator = item.LogicalOperator;
             }
 
             return result ?? true;
+        }
+
+        /// <summary>
+        /// Evaluates a single filter item (criterion or group)
+        /// </summary>
+        private static bool EvaluateItem(FilterItemBase item, FilterContext context)
+        {
+            if (!item.IsEnabled)
+                return true;
+
+            if (item is FilterCriterion criterion)
+            {
+                return EvaluateCriterion(criterion, context);
+            }
+            else if (item is FilterGroup group)
+            {
+                return EvaluateGroup(group, context);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Evaluates a filter group
+        /// </summary>
+        private static bool EvaluateGroup(FilterGroup group, FilterContext context)
+        {
+            if (!group.IsEnabled || !group.HasEnabledItems)
+                return true;
+
+            var enabledItems = group.Items.Where(i => i.IsEnabled).ToList();
+            return EvaluateItems(enabledItems, context);
         }
 
         #endregion
@@ -383,7 +551,7 @@ namespace DataMiningGUI
                     return context.Plan?.Review?.ApprovalStatus ?? string.Empty;
 
                 case FilterField.MachineName:
-                    return context.BeamSet?.MachineName ?? 
+                    return context.BeamSet?.MachineName ??
                            context.Plan?.BeamSets?.FirstOrDefault()?.MachineName ?? string.Empty;
 
                 case FilterField.NumberOfFractions:
@@ -415,7 +583,7 @@ namespace DataMiningGUI
         /// <summary>
         /// Evaluates an operator against field value and criterion value
         /// </summary>
-        private static bool EvaluateOperator(FilterOperator op, string fieldValue, 
+        private static bool EvaluateOperator(FilterOperator op, string fieldValue,
             string criterionValue, FilterField field)
         {
             // Handle null/empty field values
@@ -431,20 +599,20 @@ namespace DataMiningGUI
 
                 case FilterOperator.Contains:
                     if (fieldIsEmpty) return false;
-                    return fieldValue.IndexOf(criterionValue ?? "", 
+                    return fieldValue.IndexOf(criterionValue ?? "",
                         StringComparison.OrdinalIgnoreCase) >= 0;
 
                 case FilterOperator.NotContains:
                     if (fieldIsEmpty) return true;
-                    return fieldValue.IndexOf(criterionValue ?? "", 
+                    return fieldValue.IndexOf(criterionValue ?? "",
                         StringComparison.OrdinalIgnoreCase) < 0;
 
                 case FilterOperator.Equals:
-                    return string.Equals(fieldValue ?? "", criterionValue ?? "", 
+                    return string.Equals(fieldValue ?? "", criterionValue ?? "",
                         StringComparison.OrdinalIgnoreCase);
 
                 case FilterOperator.NotEquals:
-                    return !string.Equals(fieldValue ?? "", criterionValue ?? "", 
+                    return !string.Equals(fieldValue ?? "", criterionValue ?? "",
                         StringComparison.OrdinalIgnoreCase);
 
                 case FilterOperator.GreaterThan:
@@ -461,14 +629,14 @@ namespace DataMiningGUI
         /// <summary>
         /// Evaluates numeric comparison operators
         /// </summary>
-        private static bool EvaluateNumericOperator(FilterOperator op, 
+        private static bool EvaluateNumericOperator(FilterOperator op,
             string fieldValue, string criterionValue)
         {
-            if (!double.TryParse(fieldValue, NumberStyles.Any, 
+            if (!double.TryParse(fieldValue, NumberStyles.Any,
                 CultureInfo.InvariantCulture, out double fieldNum))
                 return false;
 
-            if (!double.TryParse(criterionValue, NumberStyles.Any, 
+            if (!double.TryParse(criterionValue, NumberStyles.Any,
                 CultureInfo.InvariantCulture, out double criterionNum))
                 return false;
 
@@ -559,7 +727,7 @@ namespace DataMiningGUI
             var energies = new HashSet<string>();
 
             // From prescription
-            var prescription = context.BeamSet?.Prescription 
+            var prescription = context.BeamSet?.Prescription
                 ?? context.Plan?.BeamSets?.FirstOrDefault()?.Prescription;
             if (prescription?.Energies != null)
             {
@@ -568,7 +736,7 @@ namespace DataMiningGUI
             }
 
             // From beams
-            var beams = context.BeamSet?.Beams 
+            var beams = context.BeamSet?.Beams
                 ?? context.Plan?.BeamSets?.FirstOrDefault()?.Beams;
             if (beams != null)
             {
@@ -586,7 +754,7 @@ namespace DataMiningGUI
         {
             var techniques = new HashSet<string>();
 
-            var beams = context.BeamSet?.Beams 
+            var beams = context.BeamSet?.Beams
                 ?? context.Plan?.BeamSets?.FirstOrDefault()?.Beams;
             if (beams != null)
             {
@@ -607,7 +775,7 @@ namespace DataMiningGUI
         /// <summary>
         /// Filters a list of patients and returns matching patient/course/plan combinations
         /// </summary>
-        public static List<FilterContext> FilterPatients(FilterConfiguration config, 
+        public static List<FilterContext> FilterPatients(FilterConfiguration config,
             IEnumerable<PatientClass> patients)
         {
             var results = new List<FilterContext>();

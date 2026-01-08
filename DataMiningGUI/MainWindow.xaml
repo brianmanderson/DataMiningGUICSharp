@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:DataMiningGUI"
         mc:Ignorable="d"
-        Title="Data Mining GUI - Patient Browser" Height="600" Width="1100"
+        Title="Data Mining GUI - Patient Browser" Height="650" Width="1150"
         WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
@@ -35,15 +35,23 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- Header Section with Folder Selection -->
         <Border Grid.Row="0" Background="#F0F0F0" BorderBrush="#CCCCCC" BorderThickness="0,0,0,1">
-            <StackPanel>
-                <TextBlock Text="Select Database Folders:" Style="{StaticResource HeaderTextStyle}"/>
-                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" MaxHeight="60">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Text="Select Database Folders:" Style="{StaticResource HeaderTextStyle}"/>
+                
+                <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" MaxHeight="60">
                     <ItemsControl x:Name="FolderCheckBoxPanel">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -52,7 +60,45 @@
                         </ItemsControl.ItemsPanel>
                     </ItemsControl>
                 </ScrollViewer>
-            </StackPanel>
+
+                <!-- Load Button and Progress -->
+                <Border Grid.Row="2" Padding="10,5" Background="#E8E8E8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Button x:Name="LoadPatientsButton" 
+                                Grid.Column="0"
+                                Content="📂 Load Patients" 
+                                Click="LoadPatients_Click"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Background="#4CAF50"
+                                Foreground="White"
+                                FontWeight="SemiBold"
+                                MinWidth="120"/>
+
+                        <Button x:Name="CancelLoadButton" 
+                                Grid.Column="1"
+                                Content="Cancel" 
+                                Click="CancelLoad_Click"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Visibility="Collapsed"/>
+
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="20,0,0,0">
+                            <TextBlock x:Name="LoadProgressText" Text="" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <ProgressBar x:Name="LoadProgressBar" Width="200" Height="18" 
+                                         Minimum="0" Maximum="100" Value="0" Visibility="Collapsed"/>
+                        </StackPanel>
+
+                        <TextBlock Grid.Column="3" x:Name="SelectedFilesText" Text="0 files selected" 
+                                   VerticalAlignment="Center" Foreground="#666666"/>
+                    </Grid>
+                </Border>
+            </Grid>
         </Border>
 
         <!-- Search/Filter Section -->
@@ -118,8 +164,14 @@
             </Grid>
         </Border>
 
+        <!-- Loaded Patients Info -->
+        <Border x:Name="LoadedInfoBorder" Grid.Row="3" Background="#E3F2FD" BorderBrush="#90CAF9" 
+                BorderThickness="0,0,0,1" Padding="10,4" Visibility="Collapsed">
+            <TextBlock x:Name="LoadedInfoText" Text="" Foreground="#1565C0"/>
+        </Border>
+
         <!-- Patient Data Grid -->
-        <DataGrid x:Name="PatientDataGrid" Grid.Row="3" 
+        <DataGrid x:Name="PatientDataGrid" Grid.Row="4" 
                   AutoGenerateColumns="False" 
                   IsReadOnly="True"
                   SelectionMode="Single"
@@ -147,16 +199,14 @@
         </DataGrid>
 
         <!-- Status Bar -->
-        <Border Grid.Row="4" Background="#E8E8E8" BorderBrush="#CCCCCC" BorderThickness="0,1,0,0">
+        <Border Grid.Row="5" Background="#E8E8E8" BorderBrush="#CCCCCC" BorderThickness="0,1,0,0">
             <Grid Margin="10,5">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock x:Name="StatusText" Grid.Column="0" Text="Ready" VerticalAlignment="Center"/>
-                <ProgressBar x:Name="LoadingProgressBar" Grid.Column="1" Width="150" Height="18" 
-                             IsIndeterminate="True" Visibility="Collapsed"/>
+                <TextBlock x:Name="StatusText" Grid.Column="0" Text="Ready - Select folders and click 'Load Patients'" VerticalAlignment="Center"/>
             </Grid>
         </Border>
     </Grid>

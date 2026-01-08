@@ -90,8 +90,9 @@ namespace DataMiningGUI
                             Style = (Style)FindResource("FolderCheckBoxStyle")
                         };
 
-                        checkBox.Checked += FolderCheckBox_Changed;
-                        checkBox.Unchecked += FolderCheckBox_Changed;
+                        // Update selected files count when checkbox changes
+                        checkBox.Checked += FolderCheckBox_SelectionChanged;
+                        checkBox.Unchecked += FolderCheckBox_SelectionChanged;
 
                         _folderCheckBoxes[folderName] = checkBox;
                         FolderCheckBoxPanel.Items.Add(checkBox);
@@ -104,8 +105,10 @@ namespace DataMiningGUI
                 }
                 else
                 {
-                    StatusText.Text = $"Found {_folderCheckBoxes.Count} folders with patient data. Select folders to load.";
+                    StatusText.Text = $"Found {_folderCheckBoxes.Count} folders with patient data. Select folders and click 'Load Patients'.";
                 }
+
+                UpdateSelectedFilesCount();
             }
             catch (Exception ex)
             {
@@ -120,11 +123,28 @@ namespace DataMiningGUI
         #region Event Handlers
 
         /// <summary>
-        /// Handles checkbox checked/unchecked events to reload patients
+        /// Updates the selected files count when checkboxes change
         /// </summary>
-        private async void FolderCheckBox_Changed(object sender, RoutedEventArgs e)
+        private void FolderCheckBox_SelectionChanged(object sender, RoutedEventArgs e)
+        {
+            UpdateSelectedFilesCount();
+        }
+
+        /// <summary>
+        /// Handles the Load Patients button click
+        /// </summary>
+        private async void LoadPatients_Click(object sender, RoutedEventArgs e)
         {
             await LoadPatientsAsync();
+        }
+
+        /// <summary>
+        /// Handles the Cancel Load button click
+        /// </summary>
+        private void CancelLoad_Click(object sender, RoutedEventArgs e)
+        {
+            _loadCancellationTokenSource?.Cancel();
+            StatusText.Text = "Load cancelled.";
         }
 
         /// <summary>
@@ -182,7 +202,29 @@ namespace DataMiningGUI
         #region Patient Loading
 
         /// <summary>
-        /// Asynchronously loads patients from all selected folders
+        /// Updates the display of selected files count
+        /// </summary>
+        private void UpdateSelectedFilesCount()
+        {
+            var selectedFolders = _folderCheckBoxes
+                .Where(kvp => kvp.Value.IsChecked == true)
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            int totalFiles = 0;
+            foreach (var folder in selectedFolders)
+            {
+                if (_folderJsonFiles.TryGetValue(folder, out var files))
+                {
+                    totalFiles += files.Count;
+                }
+            }
+
+            SelectedFilesText.Text = $"{totalFiles} files selected from {selectedFolders.Count} folder(s)";
+        }
+
+        /// <summary>
+        /// Asynchronously loads patients from all selected folders with progress reporting
         /// </summary>
         private async Task LoadPatientsAsync()
         {
@@ -199,19 +241,13 @@ namespace DataMiningGUI
 
             if (selectedFolders.Count == 0)
             {
-                lock (_patientsLock)
-                {
-                    _allPatients.Clear();
-                }
-                _displayItems.Clear();
-                TotalCountText.Text = "0";
-                DisplayCountText.Text = "0";
-                StatusText.Text = "No folders selected.";
+                MessageBox.Show("Please select at least one folder to load patients from.",
+                    "No Folders Selected", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
             // Show loading state
-            SetLoadingState(true, $"Loading patients from {selectedFolders.Count} folder(s)...");
+            SetLoadingState(true);
 
             try
             {
@@ -225,12 +261,14 @@ namespace DataMiningGUI
                     }
                 }
 
-                // Load patients asynchronously
-                var loadedPatients = await Task.Run(() =>
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    return AriaDataBaseJsonReader.ReadPatientFiles(allJsonFiles);
-                }, cancellationToken);
+                // Create progress reporter
+                var progress = new Progress<PatientLoadProgress>(OnLoadProgressChanged);
+
+                // Load patients asynchronously with progress
+                var loadedPatients = await AriaDataBaseJsonReader.ReadPatientFilesAsync(
+                    allJsonFiles,
+                    progress,
+                    cancellationToken);
 
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -240,29 +278,37 @@ namespace DataMiningGUI
                 }
 
                 // Update display on UI thread
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    UpdateDisplayedPatients();
-                    StatusText.Text = $"Loaded {_allPatients.Count} patients from {selectedFolders.Count} folder(s).";
-                });
+                UpdateDisplayedPatients();
+
+                // Show loaded info
+                LoadedInfoBorder.Visibility = Visibility.Visible;
+                LoadedInfoText.Text = $"Loaded {_allPatients.Count} patients from {selectedFolders.Count} folder(s) ({allJsonFiles.Count} files)";
+                StatusText.Text = $"Ready - {_allPatients.Count} patients loaded";
             }
             catch (OperationCanceledException)
             {
-                // Loading was cancelled, ignore
+                StatusText.Text = "Load cancelled by user.";
+                LoadedInfoBorder.Visibility = Visibility.Collapsed;
             }
             catch (Exception ex)
             {
-                await Dispatcher.InvokeAsync(() =>
-                {
-                    StatusText.Text = $"Error loading patients: {ex.Message}";
-                    MessageBox.Show($"Error loading patients:\n{ex.Message}",
-                        "Load Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                });
+                StatusText.Text = $"Error loading patients: {ex.Message}";
+                MessageBox.Show($"Error loading patients:\n{ex.Message}",
+                    "Load Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
-                await Dispatcher.InvokeAsync(() => SetLoadingState(false));
+                SetLoadingState(false);
             }
+        }
+
+        /// <summary>
+        /// Handles progress updates from the patient loader
+        /// </summary>
+        private void OnLoadProgressChanged(PatientLoadProgress progress)
+        {
+            LoadProgressBar.Value = progress.PercentComplete;
+            LoadProgressText.Text = $"{progress.ProcessedFiles}/{progress.TotalFiles} ({progress.PercentComplete:F0}%) - {progress.SuccessfulFiles} loaded, {progress.ErrorFiles} errors";
         }
 
         #endregion
@@ -432,7 +478,7 @@ namespace DataMiningGUI
         /// </summary>
         private void UpdateFilterUI()
         {
-            bool hasActiveFilter = _currentFilter.IsActive && _currentFilter.HasCriteria;
+            bool hasActiveFilter = _currentFilter.IsActive && _currentFilter.HasItems;
 
             ActiveFilterBorder.Visibility = hasActiveFilter ? Visibility.Visible : Visibility.Collapsed;
             ClearFilterButton.Visibility = hasActiveFilter ? Visibility.Visible : Visibility.Collapsed;
@@ -448,26 +494,26 @@ namespace DataMiningGUI
         /// </summary>
         private string BuildFilterSummary()
         {
-            if (!_currentFilter.HasCriteria)
+            if (!_currentFilter.HasItems)
                 return string.Empty;
 
             var sb = new StringBuilder();
-            var enabledCriteria = _currentFilter.Criteria.Where(c => c.IsEnabled).ToList();
+            var enabledItems = _currentFilter.Items.Where(i => i.IsEnabled).ToList();
 
-            for (int i = 0; i < enabledCriteria.Count && i < 3; i++)
+            for (int i = 0; i < enabledItems.Count && i < 3; i++)
             {
-                var c = enabledCriteria[i];
+                var item = enabledItems[i];
                 if (i > 0)
                 {
-                    var prevLogic = enabledCriteria[i - 1].LogicalOperator;
+                    var prevLogic = enabledItems[i - 1].LogicalOperator;
                     sb.Append(prevLogic == LogicalOperator.And ? " AND " : " OR ");
                 }
-                sb.Append($"{EnumHelper.GetDescription(c.Field)} {EnumHelper.GetDescription(c.Operator)} '{c.Value}'");
+                sb.Append(item.DisplaySummary);
             }
 
-            if (enabledCriteria.Count > 3)
+            if (enabledItems.Count > 3)
             {
-                sb.Append($" (+{enabledCriteria.Count - 3} more)");
+                sb.Append($" (+{enabledItems.Count - 3} more)");
             }
 
             return sb.ToString();
@@ -476,28 +522,32 @@ namespace DataMiningGUI
         /// <summary>
         /// Sets the loading state of the UI
         /// </summary>
-        private void SetLoadingState(bool isLoading, string message = null)
+        private void SetLoadingState(bool isLoading)
         {
-            LoadingProgressBar.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
+            LoadPatientsButton.IsEnabled = !isLoading;
+            CancelLoadButton.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
+            LoadProgressBar.Visibility = isLoading ? Visibility.Visible : Visibility.Collapsed;
+            LoadProgressBar.Value = 0;
 
-            if (!string.IsNullOrEmpty(message))
+            if (isLoading)
             {
-                StatusText.Text = message;
+                LoadProgressText.Text = "Starting...";
+                StatusText.Text = "Loading patients...";
             }
-            else if (!isLoading)
+            else
             {
-                StatusText.Text = "Ready";
+                LoadProgressText.Text = "";
             }
 
-            // Disable checkboxes while loading
+            // Disable/enable other controls while loading
             foreach (var checkBox in _folderCheckBoxes.Values)
             {
                 checkBox.IsEnabled = !isLoading;
             }
 
-            // Disable filter buttons while loading
             OpenFilterButton.IsEnabled = !isLoading;
             ClearFilterButton.IsEnabled = !isLoading;
+            SearchTextBox.IsEnabled = !isLoading;
         }
 
         #endregion
