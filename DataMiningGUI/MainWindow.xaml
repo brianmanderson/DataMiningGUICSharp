@@ -5,8 +5,112 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:DataMiningGUI"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
+        Title="Data Mining GUI - Patient Browser" Height="600" Width="1000"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <Style x:Key="FolderCheckBoxStyle" TargetType="CheckBox">
+            <Setter Property="Margin" Value="10,5"/>
+            <Setter Property="Padding" Value="5,2"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="HeaderTextStyle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Margin" Value="10,5"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Window.Resources>
+
     <Grid>
-        
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header Section with Folder Selection -->
+        <Border Grid.Row="0" Background="#F0F0F0" BorderBrush="#CCCCCC" BorderThickness="0,0,0,1">
+            <StackPanel>
+                <TextBlock Text="Select Database Folders:" Style="{StaticResource HeaderTextStyle}"/>
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" MaxHeight="60">
+                    <ItemsControl x:Name="FolderCheckBoxPanel">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
+        </Border>
+
+        <!-- Search/Filter Section -->
+        <Border Grid.Row="1" Background="#FAFAFA" BorderBrush="#CCCCCC" BorderThickness="0,0,0,1" Padding="10,5">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="200"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="Search MRN:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBox x:Name="SearchTextBox" Grid.Column="1" VerticalContentAlignment="Center" 
+                         TextChanged="SearchTextBox_TextChanged" Height="25"/>
+                <Button x:Name="ClearSearchButton" Grid.Column="2" Content="Clear" Margin="5,0,0,0" 
+                        Padding="10,3" Click="ClearSearchButton_Click"/>
+
+                <StackPanel Grid.Column="4" Orientation="Horizontal">
+                    <TextBlock Text="Displaying: " VerticalAlignment="Center"/>
+                    <TextBlock x:Name="DisplayCountText" Text="0" VerticalAlignment="Center" FontWeight="Bold"/>
+                    <TextBlock Text=" of " VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TotalCountText" Text="0" VerticalAlignment="Center" FontWeight="Bold"/>
+                    <TextBlock Text=" patients" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Patient Data Grid -->
+        <DataGrid x:Name="PatientDataGrid" Grid.Row="2" 
+                  AutoGenerateColumns="False" 
+                  IsReadOnly="True"
+                  SelectionMode="Single"
+                  AlternatingRowBackground="#F9F9F9"
+                  GridLinesVisibility="Horizontal"
+                  HeadersVisibility="Column"
+                  CanUserSortColumns="True"
+                  CanUserReorderColumns="True"
+                  CanUserResizeColumns="True"
+                  Margin="5">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="MRN" Binding="{Binding MRN}" Width="120"/>
+                <DataGridTextColumn Header="Patient Name" Binding="{Binding PatientName}" Width="150"/>
+                <DataGridTextColumn Header="Course" Binding="{Binding CourseName}" Width="120"/>
+                <DataGridTextColumn Header="Plan Name" Binding="{Binding PlanName}" Width="150"/>
+                <DataGridTextColumn Header="Plan Type" Binding="{Binding PlanType}" Width="100"/>
+                <DataGridTextColumn Header="Planned By" Binding="{Binding PlannedBy}" Width="100"/>
+                <DataGridTextColumn Header="Approval Status" Binding="{Binding ApprovalStatus}" Width="110"/>
+                <DataGridTextColumn Header="Review Date" Binding="{Binding ReviewDateTime}" Width="140"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Status Bar -->
+        <Border Grid.Row="3" Background="#E8E8E8" BorderBrush="#CCCCCC" BorderThickness="0,1,0,0">
+            <Grid Margin="10,5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="StatusText" Grid.Column="0" Text="Ready" VerticalAlignment="Center"/>
+                <ProgressBar x:Name="LoadingProgressBar" Grid.Column="1" Width="150" Height="18" 
+                             IsIndeterminate="True" Visibility="Collapsed"/>
+            </Grid>
+        </Border>
     </Grid>
 </Window>
