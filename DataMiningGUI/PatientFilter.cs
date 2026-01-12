@@ -58,7 +58,10 @@ namespace DataMiningGUI
         ReviewYear,
 
         [Description("Review Month")]
-        ReviewMonth
+        ReviewMonth,
+
+        [Description("Contains ROI")]
+        ContainsROI
     }
 
     /// <summary>
@@ -575,6 +578,9 @@ namespace DataMiningGUI
                 case FilterField.ReviewMonth:
                     return context.Plan?.Review?.ReviewTime?.Month.ToString() ?? string.Empty;
 
+                case FilterField.ContainsROI:
+                    return GetROINames(context);
+
                 default:
                     return string.Empty;
             }
@@ -766,6 +772,47 @@ namespace DataMiningGUI
             }
 
             return string.Join(", ", techniques);
+        }
+
+        private static string GetROINames(FilterContext context)
+        {
+            HashSet<string> roiNames = new HashSet<string>();
+
+            // From BeamSets
+            List<BeamSetClass> beamSets = context.Plan?.BeamSets;
+            if (beamSets != null)
+            {
+                foreach (var beamSet in beamSets)
+                {
+                    if (beamSet.FractionDose?.DoseROIs != null)
+                    {
+                        foreach (var doseROI in beamSet.FractionDose.DoseROIs)
+                        {
+                            if (!string.IsNullOrEmpty(doseROI.Name))
+                                roiNames.Add(doseROI.Name);
+                        }
+                    }
+                }
+            }
+
+            // From ApplicatorSets
+            List<ApplicatorSetClass> applicatorSets = context.Plan?.ApplicatorSets;
+            if (applicatorSets != null)
+            {
+                foreach (var applicatorSet in applicatorSets)
+                {
+                    if (applicatorSet.FractionDose?.DoseROIs != null)
+                    {
+                        foreach (var doseROI in applicatorSet.FractionDose.DoseROIs)
+                        {
+                            if (!string.IsNullOrEmpty(doseROI.Name))
+                                roiNames.Add(doseROI.Name);
+                        }
+                    }
+                }
+            }
+
+            return string.Join(", ", roiNames);
         }
 
         #endregion
