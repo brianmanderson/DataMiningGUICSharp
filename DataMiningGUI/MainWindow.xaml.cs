@@ -205,6 +205,29 @@ namespace DataMiningGUI
             UpdateDisplayedPatients();
         }
 
+        /// <summary>
+        /// Opens the export window to export displayed data to CSV
+        /// </summary>
+        private void Export_Click(object sender, RoutedEventArgs e)
+        {
+            // Get all currently filtered items (not just the current page)
+            var dataToExport = _allFilteredItems.ToList();
+
+            if (dataToExport.Count == 0)
+            {
+                MessageBox.Show("No data to export. Please load patients and apply any desired filters first.",
+                    "No Data", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var exportWindow = new ExportWindow(dataToExport)
+            {
+                Owner = this
+            };
+
+            exportWindow.ShowDialog();
+        }
+
         #endregion
 
         #region Pagination Event Handlers
@@ -444,6 +467,8 @@ namespace DataMiningGUI
                                 NumberOfFractions = "N/A",
                                 DosePerFraction = "N/A",
                                 TotalDose = "N/A",
+                                Energy = "N/A",
+                                Technique = "N/A",
                                 PlannedBy = "N/A",
                                 ApprovalStatus = "N/A",
                                 ReviewDateTime = "N/A",
@@ -470,6 +495,8 @@ namespace DataMiningGUI
                         NumberOfFractions = "N/A",
                         DosePerFraction = "N/A",
                         TotalDose = "N/A",
+                        Energy = "N/A",
+                        Technique = "N/A",
                         PlannedBy = "N/A",
                         ApprovalStatus = "N/A",
                         ReviewDateTime = "N/A",
@@ -564,6 +591,17 @@ namespace DataMiningGUI
                 : normalization?.DoseValue_cGy > 0 ? normalization.DoseValue_cGy
                 : (double?)null;
 
+            // Extract Energy and Technique info
+            var energy = "N/A";
+            var technique = "N/A";
+            
+            if (beamSet?.Beams != null && beamSet.Beams.Any())
+            {
+                var firstBeam = beamSet.Beams.FirstOrDefault();
+                energy = firstBeam?.BeamQualityId ?? "N/A";
+                technique = firstBeam?.DeliveryTechnique ?? "N/A";
+            }
+
             return new PatientDisplayItem
             {
                 MRN = patient.MRN,
@@ -575,6 +613,8 @@ namespace DataMiningGUI
                 NumberOfFractions = fractions?.ToString() ?? "N/A",
                 DosePerFraction = dosePerFx?.ToString("F1") ?? "N/A",
                 TotalDose = totalDose?.ToString("F1") ?? "N/A",
+                Energy = energy,
+                Technique = technique,
                 PlannedBy = plan.PlannedBy ?? "N/A",
                 ApprovalStatus = plan.Review?.ApprovalStatus ?? "N/A",
                 ReviewDateTime = FormatReviewDateTime(plan.Review?.ReviewTime),
@@ -748,6 +788,8 @@ namespace DataMiningGUI
         private string _approvalStatus;
         private string _reviewDateTime;
         private DateTime _reviewDateTimeSortable;
+        private string _energy;
+        private string _technique;
 
         public string MRN
         {
@@ -825,6 +867,18 @@ namespace DataMiningGUI
         {
             get => _reviewDateTimeSortable;
             set { _reviewDateTimeSortable = value; OnPropertyChanged(nameof(ReviewDateTimeSortable)); }
+        }
+
+        public string Energy
+        {
+            get => _energy;
+            set { _energy = value; OnPropertyChanged(nameof(Energy)); }
+        }
+
+        public string Technique
+        {
+            get => _technique;
+            set { _technique = value; OnPropertyChanged(nameof(Technique)); }
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

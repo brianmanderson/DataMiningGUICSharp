@@ -1,0 +1,100 @@
+<Window x:Class="DataMiningGUI.ExportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Export Patient Data" Height="550" Width="500"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize">
+
+    <Window.Resources>
+        <Style x:Key="FieldCheckBoxStyle" TargetType="CheckBox">
+            <Setter Property="Margin" Value="10,5"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="ButtonStyle" TargetType="Button">
+            <Setter Property="Padding" Value="15,8"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="MinWidth" Value="100"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="#2196F3" Padding="15,12">
+            <StackPanel>
+                <TextBlock Text="Export Patient Data to CSV" 
+                           FontSize="16" 
+                           FontWeight="SemiBold" 
+                           Foreground="White"/>
+                <TextBlock x:Name="RecordCountText" 
+                           Text="0 records to export" 
+                           FontSize="12" 
+                           Foreground="#E3F2FD" 
+                           Margin="0,5,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Selection Buttons -->
+        <Border Grid.Row="1" Background="#F5F5F5" BorderBrush="#E0E0E0" BorderThickness="0,1" Padding="10,8">
+            <StackPanel Orientation="Horizontal">
+                <Button Content="Select All" 
+                        Click="SelectAll_Click" 
+                        Style="{StaticResource ButtonStyle}"
+                        Background="#4CAF50"
+                        Foreground="White"
+                        Padding="12,6"/>
+                <Button Content="Deselect All" 
+                        Click="DeselectAll_Click" 
+                        Style="{StaticResource ButtonStyle}"
+                        Padding="12,6"/>
+                <TextBlock Text="Select fields to export:" 
+                           VerticalAlignment="Center" 
+                           Margin="15,0,0,0"
+                           FontWeight="SemiBold"
+                           Foreground="#555"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Field Checkboxes -->
+        <Border Grid.Row="2" BorderBrush="#E0E0E0" BorderThickness="1" Margin="10">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="FieldCheckBoxPanel" Margin="10">
+                    <!-- Checkboxes will be added programmatically -->
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Status -->
+        <Border Grid.Row="3" Background="#FFF3E0" BorderBrush="#FFB74D" BorderThickness="0,1" Padding="12,8">
+            <TextBlock x:Name="StatusText" 
+                       Text="Select the fields you want to export, then click Export." 
+                       Foreground="#E65100"
+                       TextWrapping="Wrap"/>
+        </Border>
+
+        <!-- Action Buttons -->
+        <Border Grid.Row="4" Background="#F5F5F5" BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Padding="10">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Export to CSV" 
+                        Click="Export_Click" 
+                        Style="{StaticResource ButtonStyle}"
+                        Background="#2196F3"
+                        Foreground="White"
+                        FontWeight="SemiBold"/>
+                <Button Content="Cancel" 
+                        Click="Cancel_Click" 
+                        Style="{StaticResource ButtonStyle}"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

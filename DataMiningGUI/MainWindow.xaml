@@ -83,7 +83,7 @@
 
                         <Button x:Name="LoadPatientsButton" 
                                 Grid.Column="0"
-                                Content="📂 Load Patients" 
+                                Content="ðŸ“‚ Load Patients" 
                                 Click="LoadPatients_Click"
                                 Style="{StaticResource ActionButtonStyle}"
                                 Background="#4CAF50"
@@ -132,7 +132,7 @@
                 <!-- Filter Buttons -->
                 <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="20,0,0,0">
                     <Button x:Name="OpenFilterButton" 
-                            Content="🔍 Advanced Filter..." 
+                            Content="ðŸ” Advanced Filter..." 
                             Click="OpenFilter_Click"
                             Style="{StaticResource ActionButtonStyle}"
                             Background="#2196F3"
@@ -157,12 +157,12 @@
                         <Border BorderBrush="#CCCCCC" BorderThickness="1,0,0,0" Padding="15,0,0,0">
                             <StackPanel Orientation="Horizontal">
                                 <Button x:Name="FirstPageButton" 
-                                        Content="⏮" 
+                                        Content="â®" 
                                         ToolTip="First Page"
                                         Click="FirstPage_Click"
                                         Style="{StaticResource PaginationButtonStyle}"/>
                                 <Button x:Name="PrevPageButton" 
-                                        Content="◀" 
+                                        Content="â—€" 
                                         ToolTip="Previous Page"
                                         Click="PrevPage_Click"
                                         Style="{StaticResource PaginationButtonStyle}"/>
@@ -173,13 +173,13 @@
                                 <TextBlock x:Name="TotalPagesText" Text="1" VerticalAlignment="Center" FontWeight="Bold"/>
                                 
                                 <Button x:Name="NextPageButton" 
-                                        Content="▶" 
+                                        Content="â–¶" 
                                         ToolTip="Next Page"
                                         Click="NextPage_Click"
                                         Style="{StaticResource PaginationButtonStyle}"
                                         Margin="8,0,3,0"/>
                                 <Button x:Name="LastPageButton" 
-                                        Content="⏭" 
+                                        Content="â­" 
                                         ToolTip="Last Page"
                                         Click="LastPage_Click"
                                         Style="{StaticResource PaginationButtonStyle}"/>
@@ -200,11 +200,11 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" Text="⚠ Filter Active: " FontWeight="SemiBold" 
+                <TextBlock Grid.Column="0" Text="âš  Filter Active: " FontWeight="SemiBold" 
                            Foreground="#E65100" VerticalAlignment="Center"/>
                 <TextBlock x:Name="ActiveFilterText" Grid.Column="1" Text="" 
                            Foreground="#E65100" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <Button Grid.Column="2" Content="✕ Remove" Click="ClearFilter_Click" 
+                <Button Grid.Column="2" Content="âœ• Remove" Click="ClearFilter_Click" 
                         Padding="8,2" Background="Transparent" BorderThickness="0"
                         Foreground="#E65100" Cursor="Hand"/>
             </Grid>
