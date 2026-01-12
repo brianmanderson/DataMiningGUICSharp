@@ -83,7 +83,7 @@
 
                         <Button x:Name="LoadPatientsButton" 
                                 Grid.Column="0"
-                                Content="ðŸ“‚ Load Patients" 
+                                Content="📂 Load Patients" 
                                 Click="LoadPatients_Click"
                                 Style="{StaticResource ActionButtonStyle}"
                                 Background="#4CAF50"
@@ -128,11 +128,10 @@
                          TextChanged="SearchTextBox_TextChanged" Height="26"/>
                 <Button x:Name="ClearSearchButton" Grid.Column="2" Content="Clear" Margin="5,0,0,0" 
                         Padding="10,3" Click="ClearSearchButton_Click"/>
-
                 <!-- Filter Buttons -->
                 <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="20,0,0,0">
                     <Button x:Name="OpenFilterButton" 
-                            Content="ðŸ” Advanced Filter..." 
+                            Content="🔍 Advanced Filter..." 
                             Click="OpenFilter_Click"
                             Style="{StaticResource ActionButtonStyle}"
                             Background="#2196F3"
@@ -142,6 +141,15 @@
                             Click="ClearFilter_Click"
                             Style="{StaticResource ActionButtonStyle}"
                             Visibility="Collapsed"/>
+                    <Button x:Name="ExportButton" 
+                            Content="📤 Export Data" 
+                            Click="Export_Click"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Background="#FF9800"
+                            Foreground="White"
+                            FontWeight="SemiBold"
+                            ToolTip="Export filtered data to CSV"/>
+
                 </StackPanel>
 
                 <!-- Display Count and Pagination Controls -->
@@ -157,12 +165,12 @@
                         <Border BorderBrush="#CCCCCC" BorderThickness="1,0,0,0" Padding="15,0,0,0">
                             <StackPanel Orientation="Horizontal">
                                 <Button x:Name="FirstPageButton" 
-                                        Content="â®" 
+                                        Content="⏮" 
                                         ToolTip="First Page"
                                         Click="FirstPage_Click"
                                         Style="{StaticResource PaginationButtonStyle}"/>
                                 <Button x:Name="PrevPageButton" 
-                                        Content="â—€" 
+                                        Content="◀" 
                                         ToolTip="Previous Page"
                                         Click="PrevPage_Click"
                                         Style="{StaticResource PaginationButtonStyle}"/>
@@ -173,13 +181,13 @@
                                 <TextBlock x:Name="TotalPagesText" Text="1" VerticalAlignment="Center" FontWeight="Bold"/>
                                 
                                 <Button x:Name="NextPageButton" 
-                                        Content="â–¶" 
+                                        Content="▶" 
                                         ToolTip="Next Page"
                                         Click="NextPage_Click"
                                         Style="{StaticResource PaginationButtonStyle}"
                                         Margin="8,0,3,0"/>
                                 <Button x:Name="LastPageButton" 
-                                        Content="â­" 
+                                        Content="⏭" 
                                         ToolTip="Last Page"
                                         Click="LastPage_Click"
                                         Style="{StaticResource PaginationButtonStyle}"/>
@@ -200,11 +208,11 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" Text="âš  Filter Active: " FontWeight="SemiBold" 
+                <TextBlock Grid.Column="0" Text="⚠ Filter Active: " FontWeight="SemiBold" 
                            Foreground="#E65100" VerticalAlignment="Center"/>
                 <TextBlock x:Name="ActiveFilterText" Grid.Column="1" Text="" 
                            Foreground="#E65100" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                <Button Grid.Column="2" Content="âœ• Remove" Click="ClearFilter_Click" 
+                <Button Grid.Column="2" Content="X Remove" Click="ClearFilter_Click" 
                         Padding="8,2" Background="Transparent" BorderThickness="0"
                         Foreground="#E65100" Cursor="Hand"/>
             </Grid>
