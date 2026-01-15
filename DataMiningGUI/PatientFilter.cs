@@ -404,14 +404,16 @@ namespace DataMiningGUI
         public CourseClass Course { get; set; }
         public TreatmentPlanClass Plan { get; set; }
         public BeamSetClass BeamSet { get; set; }
+        public ApplicatorSetClass ApplicatorSet { get; set; }
 
         public FilterContext(PatientClass patient, CourseClass course = null,
-            TreatmentPlanClass plan = null, BeamSetClass beamSet = null)
+            TreatmentPlanClass plan = null, BeamSetClass beamSet = null, ApplicatorSetClass applicatorSet = null)
         {
             Patient = patient;
             Course = course;
             Plan = plan;
             BeamSet = beamSet;
+            ApplicatorSet = applicatorSet;
         }
     }
 
@@ -555,7 +557,7 @@ namespace DataMiningGUI
 
                 case FilterField.MachineName:
                     return context.BeamSet?.MachineName ??
-                           context.Plan?.BeamSets?.FirstOrDefault()?.MachineName ?? string.Empty;
+                           context.Plan?.BeamSet?.MachineName ?? string.Empty;
 
                 case FilterField.NumberOfFractions:
                     return GetNumberOfFractions(context)?.ToString() ?? string.Empty;
@@ -676,13 +678,13 @@ namespace DataMiningGUI
                 return context.BeamSet.PlanNormalization.NumberOfFractions;
 
             // Try from first BeamSet
-            var beamSet = context.Plan?.BeamSets?.FirstOrDefault();
+            BeamSetClass beamSet = context.Plan?.BeamSet;
             if (beamSet?.PlanNormalization?.NumberOfFractions > 0)
                 return beamSet.PlanNormalization.NumberOfFractions;
 
             // Try from prescription targets
             var prescriptionTarget = context.BeamSet?.Prescription?.PrescriptionTargets?.FirstOrDefault()
-                ?? context.Plan?.BeamSets?.FirstOrDefault()?.Prescription?.PrescriptionTargets?.FirstOrDefault();
+                ?? context.Plan?.BeamSet?.Prescription?.PrescriptionTargets?.FirstOrDefault();
             if (prescriptionTarget?.NumberOfFractions > 0)
                 return prescriptionTarget.NumberOfFractions;
 
@@ -696,13 +698,13 @@ namespace DataMiningGUI
                 return context.BeamSet.PlanNormalization.Dose_per_Fraction;
 
             // Try from first BeamSet
-            var beamSet = context.Plan?.BeamSets?.FirstOrDefault();
+            BeamSetClass beamSet = context.Plan?.BeamSet;
             if (beamSet?.PlanNormalization?.Dose_per_Fraction > 0)
                 return beamSet.PlanNormalization.Dose_per_Fraction;
 
             // Try from prescription targets
             var prescriptionTarget = context.BeamSet?.Prescription?.PrescriptionTargets?.FirstOrDefault()
-                ?? context.Plan?.BeamSets?.FirstOrDefault()?.Prescription?.PrescriptionTargets?.FirstOrDefault();
+                ?? context.Plan?.BeamSet?.Prescription?.PrescriptionTargets?.FirstOrDefault();
             if (prescriptionTarget?.DosePerFraction > 0)
                 return prescriptionTarget.DosePerFraction;
 
@@ -721,7 +723,7 @@ namespace DataMiningGUI
             if (context.BeamSet?.PlanNormalization?.DoseValue_cGy > 0)
                 return context.BeamSet.PlanNormalization.DoseValue_cGy;
 
-            var beamSet = context.Plan?.BeamSets?.FirstOrDefault();
+            BeamSetClass beamSet = context.Plan?.BeamSet;
             if (beamSet?.PlanNormalization?.DoseValue_cGy > 0)
                 return beamSet.PlanNormalization.DoseValue_cGy;
 
@@ -734,7 +736,7 @@ namespace DataMiningGUI
 
             // From prescription
             var prescription = context.BeamSet?.Prescription
-                ?? context.Plan?.BeamSets?.FirstOrDefault()?.Prescription;
+                ?? context.Plan?.BeamSet?.Prescription;
             if (prescription?.Energies != null)
             {
                 foreach (var e in prescription.Energies)
@@ -743,7 +745,7 @@ namespace DataMiningGUI
 
             // From beams
             var beams = context.BeamSet?.Beams
-                ?? context.Plan?.BeamSets?.FirstOrDefault()?.Beams;
+                ?? context.Plan?.BeamSet?.Beams;
             if (beams != null)
             {
                 foreach (var beam in beams)
@@ -761,7 +763,7 @@ namespace DataMiningGUI
             var techniques = new HashSet<string>();
 
             var beams = context.BeamSet?.Beams
-                ?? context.Plan?.BeamSets?.FirstOrDefault()?.Beams;
+                ?? context.Plan?.BeamSet?.Beams;
             if (beams != null)
             {
                 foreach (var beam in beams)
@@ -779,35 +781,26 @@ namespace DataMiningGUI
             HashSet<string> roiNames = new HashSet<string>();
 
             // From BeamSets
-            List<BeamSetClass> beamSets = context.Plan?.BeamSets;
-            if (beamSets != null)
+            BeamSetClass beamSet = context.Plan?.BeamSet;
+            if (beamSet != null && beamSet.FractionDose != null)
             {
-                foreach (var beamSet in beamSets)
+                foreach (var doseROI in beamSet.FractionDose?.DoseROIs)
                 {
-                    if (beamSet.FractionDose?.DoseROIs != null)
-                    {
-                        foreach (var doseROI in beamSet.FractionDose.DoseROIs)
-                        {
-                            if (!string.IsNullOrEmpty(doseROI.Name))
-                                roiNames.Add(doseROI.Name);
-                        }
-                    }
+                    if (!string.IsNullOrEmpty(doseROI.Name))
+                        roiNames.Add(doseROI.Name);
                 }
             }
 
             // From ApplicatorSets
-            List<ApplicatorSetClass> applicatorSets = context.Plan?.ApplicatorSets;
-            if (applicatorSets != null)
+            ApplicatorSetClass applicatorSet = context.Plan?.ApplicatorSet;
+            if (applicatorSet != null && applicatorSet.FractionDose != null)
             {
-                foreach (var applicatorSet in applicatorSets)
+                if (applicatorSet.FractionDose?.DoseROIs != null)
                 {
-                    if (applicatorSet.FractionDose?.DoseROIs != null)
+                    foreach (var doseROI in applicatorSet.FractionDose?.DoseROIs)
                     {
-                        foreach (var doseROI in applicatorSet.FractionDose.DoseROIs)
-                        {
-                            if (!string.IsNullOrEmpty(doseROI.Name))
-                                roiNames.Add(doseROI.Name);
-                        }
+                        if (!string.IsNullOrEmpty(doseROI.Name))
+                            roiNames.Add(doseROI.Name);
                     }
                 }
             }
@@ -850,19 +843,17 @@ namespace DataMiningGUI
 
                     foreach (var plan in course.TreatmentPlans)
                     {
-                        if (plan.BeamSets != null && plan.BeamSets.Any())
+                        if (plan.BeamSet != null)
                         {
-                            foreach (var beamSet in plan.BeamSets)
-                            {
-                                var context = new FilterContext(patient, course, plan, beamSet);
-                                if (Matches(config, context))
-                                    results.Add(context);
-                            }
+                            BeamSetClass beamSet = plan.BeamSet;
+                            var context = new FilterContext(patient, course, plan, beamSet);
+                            if (Matches(config, context))
+                                results.Add(context);
                         }
-                        else if (plan.ApplicatorSets != null && plan.ApplicatorSets.Any())
+                        else if (plan.ApplicatorSet != null)
                         {
                             // Brachy plan
-                            var context = new FilterContext(patient, course, plan);
+                            var context = new FilterContext(patient, course, plan, null, plan.ApplicatorSet);
                             if (Matches(config, context))
                                 results.Add(context);
                         }

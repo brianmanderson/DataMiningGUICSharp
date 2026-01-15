@@ -438,8 +438,7 @@ namespace DataMiningGUI
                             foreach (var plan in course.TreatmentPlans)
                             {
                                 // Get BeamSets for additional info
-                                var beamSets = plan.BeamSets;
-                                var firstBeamSet = beamSets?.FirstOrDefault();
+                                BeamSetClass firstBeamSet = plan.BeamSet;
 
                                 // Apply advanced filter
                                 var context = new FilterContext(patient, course, plan, firstBeamSet);
