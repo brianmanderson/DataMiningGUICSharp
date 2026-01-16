@@ -70,7 +70,7 @@ namespace DataMiningGUI
 
                 var directories = Directory.GetDirectories(_databasePath);
 
-                foreach (var directory in directories.OrderBy(d => d))
+                foreach (var directory in directories.OrderByDescending(d => d))
                 {
                     var folderName = Path.GetFileName(directory);
                     var jsonFiles = new List<string>();
