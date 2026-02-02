@@ -150,6 +150,15 @@
                             FontWeight="SemiBold"
                             ToolTip="Export filtered data to CSV"/>
 
+                    <Button x:Name="ExportDicomButton" 
+                            Content="📤 Export DICOM" 
+                            Click="ExportDicom_Click"
+                            Style="{StaticResource ActionButtonStyle}"
+                            Background="#FF9800"
+                            Foreground="White"
+                            FontWeight="SemiBold"
+                            ToolTip="Export filtered data as DICOM"/>
+
                 </StackPanel>
 
                 <!-- Display Count and Pagination Controls -->

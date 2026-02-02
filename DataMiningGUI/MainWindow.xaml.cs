@@ -21,7 +21,7 @@ namespace DataMiningGUI
     {
         #region Fields
 
-        private readonly string _databasePath = @"C:\Users\BRA008\Modular_Projects\LocalDatabases";
+        private readonly string _databasePath = @"\\ad.ucsd.edu\ahs\CANC\RADONC\BMAnderson\DataBases"; //@"C:\Users\BRA008\Modular_Projects\LocalDatabases";
         private const int MaxDisplayCount = 50;
 
         private List<PatientClass> _allPatients = new List<PatientClass>();
@@ -765,6 +765,34 @@ namespace DataMiningGUI
         }
 
         #endregion
+
+        private void ExportDicom_Click(object sender, RoutedEventArgs e)
+        {
+            // Get all currently filtered items (not just the current page)
+            List<PatientDisplayItem> dataToExport = _allFilteredItems.ToList();
+
+            if (dataToExport.Count == 0)
+            {
+                MessageBox.Show("No data to export. Please load patients and apply any desired filters first.",
+                    "No Data", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Get thread-safe copy of all patients for DICOM data lookup
+            List<PatientClass> patientsSnapshot;
+            lock (_patientsLock)
+            {
+                patientsSnapshot = _allPatients.ToList();
+            }
+
+            // Create export window with both filtered display items and full patient data
+            DicomExportWindow exportWindow = new DicomExportWindow(dataToExport, patientsSnapshot)
+            {
+                Owner = this
+            };
+
+            exportWindow.ShowDialog();
+        }
     }
 
     #region Display Model
