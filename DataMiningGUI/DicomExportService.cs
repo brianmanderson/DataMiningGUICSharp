@@ -19,7 +19,6 @@ namespace DataMiningGUI
     /// <summary>
     /// Service for exporting DICOM data using EvilDICOM
     /// </summary>
-    /// 
     public class DicomExportService
     {
         private DICOMSCU _localSCU;
@@ -35,7 +34,6 @@ namespace DataMiningGUI
         /// <summary>
         /// Export selected items to the specified folder using DICOM C-MOVE
         /// </summary>
-        /// 
         public void ExportAsync(
             List<ExportItem> items,
             DicomExportOptions options,
@@ -97,9 +95,15 @@ namespace DataMiningGUI
                     string examFolder = SanitizeFolderName(item.ExamName);
                     _currentExportPath = Path.Combine(options.ExportFolder, patientFolder, courseFolder, examFolder);
 
+                    // Create subdirectories for each data type
+                    string structureFolder = _currentExportPath;// Path.Combine(_currentExportPath, "Structure");
+                    string doseFolder = _currentExportPath; //Path.Combine(_currentExportPath, "Dose");
+                    string planFolder = _currentExportPath; //Path.Combine(_currentExportPath, "Plan");
+                    string registrationFolder = _currentExportPath; //Path.Combine(_currentExportPath, "Registration");
+
                     EnsureDirectoryExists(_currentExportPath);
 
-                    // Find all studies for this patient
+                    // Find studies for this patient
                     IEnumerable<CFindStudyIOD> studies = cfinder.FindStudies(item.MRN);
 
                     if (studies == null || !studies.Any())
@@ -117,106 +121,70 @@ namespace DataMiningGUI
                         continue;
                     }
 
+                    // Find all series for the studies
+                    IEnumerable<CFindSeriesIOD> allSeries = cfinder.FindSeries(studies);
                     ushort msgId = 1;
-                    bool examFound = false;
 
-                    // Iterate through each study to find the one containing our target exam
-                    foreach (CFindStudyIOD study in studies)
+                    // Export Examination (CT/MR images)
+                    if (options.ExportExamination && !string.IsNullOrEmpty(item.SeriesInstanceUID))
                     {
-                        cancellationToken.ThrowIfCancellationRequested();
+                        ExportSeriesByUID(cmover, allSeries, item.SeriesInstanceUID,
+                            options.LocalAETitle, ref msgId, _currentExportPath,
+                            "Examination", progress, cancellationToken);
+                    }
 
-                        // Find all series within this specific study
-                        IEnumerable<CFindSeriesIOD> studySeries = cfinder.FindSeries(new[] { study });
+                    // Export Structure Set, Plan, and Dose by finding related series
+                    if (options.ExportStructure || options.ExportPlan || options.ExportDose)
+                    {
+                        // Find RT Structure Set series
+                        List<CFindSeriesIOD> rtStructSeries = allSeries.Where(s => s.Modality == "RTSTRUCT" && s.SeriesDescription == "ARIA RadOnc Structure Sets").ToList();
+                        rtStructSeries = rtStructSeries.Where(s => IsRelatedToExam(s, item.SeriesInstanceUID)).ToList();
 
-                        if (studySeries == null || !studySeries.Any())
-                            continue;
-
-                        // Check if our target exam (by SeriesInstanceUID) exists in this study
-                        CFindSeriesIOD targetExamSeries = studySeries
-                            .FirstOrDefault(s => s.SeriesInstanceUID == item.SeriesInstanceUID);
-
-
-                        if (targetExamSeries == null)
-                            continue;
-
-                        // Found our exam in this study!
-                        examFound = true;
-
-                        // Export the Examination (CT/MR images)
-                        if (options.ExportExamination)
+                        if (options.ExportStructure && rtStructSeries.Any())
                         {
-                            ExportSeries(cmover, targetExamSeries, options.LocalAETitle, ref msgId,
-                                _currentExportPath, "Examination", progress, cancellationToken);
-                        }
-
-                        // Export RT Structure Sets from this study
-                        if (options.ExportStructure)
-                        {
-                            List<CFindSeriesIOD> rtStructSeries = studySeries
-                                .Where(s => s.Modality == "RTSTRUCT")
-                                .ToList();
-
                             foreach (CFindSeriesIOD series in rtStructSeries)
                             {
                                 ExportSeries(cmover, series, options.LocalAETitle, ref msgId,
-                                    _currentExportPath, "Structure", progress, cancellationToken);
+                                    structureFolder, "Structure", progress, cancellationToken);
                             }
                         }
 
-                        // Export RT Plans from this study
-                        if (options.ExportPlan)
-                        {
-                            List<CFindSeriesIOD> rtPlanSeries = studySeries
-                                .Where(s => s.Modality == "RTPLAN")
-                                .ToList();
+                        // Find RT Plan series
+                        List<CFindSeriesIOD> rtPlanSeries = allSeries.Where(s => s.Modality == "RTPLAN" && item.AssociatedPlans.Select(p => p.PlanName).Contains(s.SeriesDescription)).ToList();
 
+                        if (options.ExportPlan && rtPlanSeries.Any())
+                        {
                             foreach (CFindSeriesIOD series in rtPlanSeries)
                             {
                                 ExportSeries(cmover, series, options.LocalAETitle, ref msgId,
-                                    _currentExportPath, "Plan", progress, cancellationToken);
+                                    planFolder, "Plan", progress, cancellationToken);
                             }
                         }
 
-                        // Export RT Doses from this study
-                        if (options.ExportDose)
+                        // Find RT Dose series
+                        List<CFindSeriesIOD> rtDoseSeries = allSeries.Where(s => s.Modality == "RTDOSE").ToList();
+                        HashSet<string> seriesUIDs = new HashSet<string>();
+                        if (options.ExportDose && rtDoseSeries.Any())
                         {
-                            List<CFindSeriesIOD> rtDoseSeries = studySeries
-                                .Where(s => s.Modality == "RTDOSE")
-                                .ToList();
-
                             foreach (CFindSeriesIOD series in rtDoseSeries)
                             {
-                                ExportSeries(cmover, series, options.LocalAETitle, ref msgId,
-                                    _currentExportPath, "Dose", progress, cancellationToken);
+                                if (!seriesUIDs.Contains(series.SeriesInstanceUID))
+                                {
+                                    seriesUIDs.Add(series.SeriesInstanceUID);
+                                    ExportSeries(cmover, series, options.LocalAETitle, ref msgId,
+                                        doseFolder, "Dose", progress, cancellationToken);
+                                }
+
                             }
                         }
-
-                        // Once we've found and processed the correct study, no need to check others
-                        break;
                     }
 
-                    if (!examFound)
-                    {
-                        if (progress != null)
-                        {
-                            progress.Report(new DicomExportProgress
-                            {
-                                PercentComplete = (int)((double)processedItems / totalItems * 100),
-                                StatusMessage = string.Format("Warning: Exam not found for {0}", item.MRN),
-                                DetailMessage = string.Format("SeriesInstanceUID: {0}", item.SeriesInstanceUID)
-                            });
-                        }
-                    }
-
-                    // Export Registrations and Associated Images (these may span multiple studies)
+                    // Export Registrations and Associated Images
                     if (options.ExportRegistrations && item.AssociatedRegistrations != null && item.AssociatedRegistrations.Count > 0)
                     {
-                        // For registrations, we may need to look across all studies
-                        IEnumerable<CFindSeriesIOD> allSeries = cfinder.FindSeries(studies);
-
                         ExportRegistrationsAndAssociatedImages(
                             cmover, cfinder, allSeries, item, options.LocalAETitle, ref msgId,
-                            _currentExportPath, _currentExportPath, options, progress, cancellationToken);
+                            registrationFolder, _currentExportPath, options, progress, cancellationToken);
                     }
 
                     processedItems++;
