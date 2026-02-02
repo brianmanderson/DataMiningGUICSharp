@@ -605,6 +605,7 @@ namespace DataMiningGUI
                 ExportRegistrationsCT = ExportRegCTCheckBox.IsChecked.HasValue && ExportRegCTCheckBox.IsChecked.Value,
                 ExportRegistrationsMR = ExportRegMRCheckBox.IsChecked.HasValue && ExportRegMRCheckBox.IsChecked.Value,
                 ExportRegistrationsPET = ExportRegPETCheckBox.IsChecked.HasValue && ExportRegPETCheckBox.IsChecked.Value,
+                ExportRegistrationsCBCT = ExportRegCBCTCheckBox.IsChecked.HasValue && ExportRegCBCTCheckBox.IsChecked.Value,
                 RemoteAETitle = RemoteAETitleTextBox.Text.Trim(),
                 RemoteIP = RemoteIPTextBox.Text.Trim(),
                 RemotePort = remotePort,
@@ -659,6 +660,13 @@ namespace DataMiningGUI
 
             foreach (ExportPatientItem patient in _patients)
             {
+                // Get all examinations for this patient
+                List<ExaminationClass> patientExams = new List<ExaminationClass>();
+                if (patient.PatientData != null && patient.PatientData.Examinations != null)
+                {
+                    patientExams = patient.PatientData.Examinations;
+                }
+
                 foreach (ExportCourseItem course in patient.Courses)
                 {
                     foreach (ExportExaminationItem exam in course.Examinations)
@@ -676,7 +684,8 @@ namespace DataMiningGUI
                                 FrameOfReferenceUID = exam.FrameOfReferenceUID,
                                 AssociatedPlans = exam.AssociatedPlans,
                                 ExamData = exam.ExamData,
-                                AssociatedRegistrations = exam.AssociatedRegistrations
+                                AssociatedRegistrations = exam.AssociatedRegistrations,
+                                AssociatedExams = patientExams
                             });
                         }
                     }

@@ -256,6 +256,7 @@ namespace DataMiningGUI
     /// </summary>
     public class DicomExportOptions
     {
+        public bool ExportRegistrationsCBCT { get; set; }
         public bool ExportRegistrationsCT { get; set; }
         public bool ExportRegistrationsMR { get; set; }
         public bool ExportRegistrationsPET { get; set; }

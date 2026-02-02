@@ -164,6 +164,8 @@
                                   Style="{StaticResource CheckBoxStyle}" IsChecked="True"/>
                         <CheckBox x:Name="ExportRegPETCheckBox" Content="PET"
                                   Style="{StaticResource CheckBoxStyle}" IsChecked="True"/>
+                        <CheckBox x:Name="ExportRegCBCTCheckBox" Content="CBCT"
+                                  Style="{StaticResource CheckBoxStyle}" IsChecked="False"/>
                     </StackPanel>
 
                     <Separator Margin="0,16"/>
