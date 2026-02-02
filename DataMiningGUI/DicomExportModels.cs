@@ -2,14 +2,14 @@ using DataBaseStructure.AriaBase;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Runtime.CompilerServices;
+using System.Linq;
 
 namespace DataMiningGUI
 {
-    #region Export Item Classes
+    #region TreeView Item Classes (for UI binding)
 
     /// <summary>
-    /// Represents a patient in the export selection tree
+    /// Represents a patient in the export TreeView
     /// </summary>
     public class ExportPatientItem : INotifyPropertyChanged
     {
@@ -18,19 +18,12 @@ namespace DataMiningGUI
         public string MRN { get; set; }
         public string FirstName { get; set; }
         public string LastName { get; set; }
+        public PatientClass PatientData { get; set; }
+        public ObservableCollection<ExportCourseItem> Courses { get; set; }
 
         public string DisplayName
         {
             get { return string.Format("{0} - {1}, {2}", MRN, LastName, FirstName); }
-        }
-
-        public PatientClass PatientData { get; set; }
-
-        public ObservableCollection<ExportCourseItem> Courses { get; set; }
-
-        public ExportPatientItem()
-        {
-            Courses = new ObservableCollection<ExportCourseItem>();
         }
 
         public bool IsSelected
@@ -38,14 +31,21 @@ namespace DataMiningGUI
             get { return _isSelected; }
             set
             {
-                _isSelected = value;
-                OnPropertyChanged("IsSelected");
+                if (_isSelected != value)
+                {
+                    _isSelected = value;
+                    OnPropertyChanged("IsSelected");
+                }
             }
         }
 
-        public event PropertyChangedEventHandler PropertyChanged;
+        public ExportPatientItem()
+        {
+            Courses = new ObservableCollection<ExportCourseItem>();
+        }
 
-        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected void OnPropertyChanged(string propertyName)
         {
             PropertyChangedEventHandler handler = PropertyChanged;
             if (handler != null)
@@ -56,7 +56,7 @@ namespace DataMiningGUI
     }
 
     /// <summary>
-    /// Represents a course in the export selection tree
+    /// Represents a course in the export TreeView
     /// </summary>
     public class ExportCourseItem : INotifyPropertyChanged
     {
@@ -65,27 +65,28 @@ namespace DataMiningGUI
         public string CourseName { get; set; }
         public CourseClass CourseData { get; set; }
         public ExportPatientItem Parent { get; set; }
-
         public ObservableCollection<ExportExaminationItem> Examinations { get; set; }
-
-        public ExportCourseItem()
-        {
-            Examinations = new ObservableCollection<ExportExaminationItem>();
-        }
 
         public bool IsSelected
         {
             get { return _isSelected; }
             set
             {
-                _isSelected = value;
-                OnPropertyChanged("IsSelected");
+                if (_isSelected != value)
+                {
+                    _isSelected = value;
+                    OnPropertyChanged("IsSelected");
+                }
             }
         }
 
-        public event PropertyChangedEventHandler PropertyChanged;
+        public ExportCourseItem()
+        {
+            Examinations = new ObservableCollection<ExportExaminationItem>();
+        }
 
-        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected void OnPropertyChanged(string propertyName)
         {
             PropertyChangedEventHandler handler = PropertyChanged;
             if (handler != null)
@@ -96,7 +97,7 @@ namespace DataMiningGUI
     }
 
     /// <summary>
-    /// Represents an examination in the export selection tree
+    /// Represents an examination in the export TreeView
     /// </summary>
     public class ExportExaminationItem : INotifyPropertyChanged
     {
@@ -108,17 +109,20 @@ namespace DataMiningGUI
         public string FrameOfReferenceUID { get; set; }
         public ExaminationClass ExamData { get; set; }
         public List<TreatmentPlanClass> AssociatedPlans { get; set; }
+        public List<RegistrationExportInfo> AssociatedRegistrations { get; set; }
         public ExportCourseItem Parent { get; set; }
 
-        /// <summary>
-        /// Registrations where this exam is the target (ToFrameOfReference)
-        /// </summary>
-        public List<RegistrationExportInfo> AssociatedRegistrations { get; set; }
-
-        public ExportExaminationItem()
+        public bool IsSelected
         {
-            AssociatedPlans = new List<TreatmentPlanClass>();
-            AssociatedRegistrations = new List<RegistrationExportInfo>();
+            get { return _isSelected; }
+            set
+            {
+                if (_isSelected != value)
+                {
+                    _isSelected = value;
+                    OnPropertyChanged("IsSelected");
+                }
+            }
         }
 
         public string AssociatedPlansText
@@ -129,7 +133,7 @@ namespace DataMiningGUI
                 {
                     return string.Empty;
                 }
-                return string.Format("({0} plan(s))", AssociatedPlans.Count);
+                return string.Format("[Plans: {0}]", string.Join(", ", AssociatedPlans.Select(p => p.PlanName)));
             }
         }
 
@@ -141,23 +145,18 @@ namespace DataMiningGUI
                 {
                     return string.Empty;
                 }
-                return string.Format("[{0} reg]", AssociatedRegistrations.Count);
+                return string.Format("[Regs: {0}]", AssociatedRegistrations.Count);
             }
         }
 
-        public bool IsSelected
+        public ExportExaminationItem()
         {
-            get { return _isSelected; }
-            set
-            {
-                _isSelected = value;
-                OnPropertyChanged("IsSelected");
-            }
+            AssociatedPlans = new List<TreatmentPlanClass>();
+            AssociatedRegistrations = new List<RegistrationExportInfo>();
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
-
-        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        protected void OnPropertyChanged(string propertyName)
         {
             PropertyChangedEventHandler handler = PropertyChanged;
             if (handler != null)
@@ -167,59 +166,12 @@ namespace DataMiningGUI
         }
     }
 
-    /// <summary>
-    /// Information about a registration and its associated source examination
-    /// </summary>
-    public class RegistrationExportInfo
-    {
-        /// <summary>
-        /// The registration name
-        /// </summary>
-        public string RegistrationName { get; set; }
+    #endregion
 
-        /// <summary>
-        /// The registration UID for DICOM export
-        /// </summary>
-        public string RegistrationUID { get; set; }
-
-        /// <summary>
-        /// The source examination name (the "From" in the registration)
-        /// </summary>
-        public string SourceExamName { get; set; }
-
-        /// <summary>
-        /// The source examination's SeriesInstanceUID for DICOM export
-        /// </summary>
-        public string SourceSeriesInstanceUID { get; set; }
-
-        /// <summary>
-        /// The source examination's StudyInstanceUID
-        /// </summary>
-        public string SourceStudyInstanceUID { get; set; }
-
-        /// <summary>
-        /// The FromFrameOfReference UID
-        /// </summary>
-        public string FromFrameOfReference { get; set; }
-
-        /// <summary>
-        /// The ToFrameOfReference UID (should match the plan exam's frame of reference)
-        /// </summary>
-        public string ToFrameOfReference { get; set; }
-
-        /// <summary>
-        /// Reference to the full examination data
-        /// </summary>
-        public ExaminationClass SourceExamData { get; set; }
-
-        /// <summary>
-        /// Reference to the full registration data
-        /// </summary>
-        public RegistrationClass RegistrationData { get; set; }
-    }
+    #region Export Data Classes
 
     /// <summary>
-    /// Flattened export item for processing by DicomExportService
+    /// Represents an item to be exported via DICOM (used by DicomExportService)
     /// </summary>
     public class ExportItem
     {
@@ -230,52 +182,88 @@ namespace DataMiningGUI
         public string SeriesInstanceUID { get; set; }
         public string StudyInstanceUID { get; set; }
         public string FrameOfReferenceUID { get; set; }
-        public List<TreatmentPlanClass> AssociatedPlans { get; set; }
         public ExaminationClass ExamData { get; set; }
-
-        /// <summary>
-        /// Registrations and their associated source images to export
-        /// </summary>
-        public List<RegistrationExportInfo> AssociatedRegistrations { get; set; }
+        public List<TreatmentPlanClass> AssociatedPlans { get; set; }
         public List<ExaminationClass> AssociatedExams { get; set; }
+        public List<RegistrationExportInfo> AssociatedRegistrations { get; set; }
 
         public ExportItem()
         {
             AssociatedPlans = new List<TreatmentPlanClass>();
-            AssociatedRegistrations = new List<RegistrationExportInfo>();
             AssociatedExams = new List<ExaminationClass>();
+            AssociatedRegistrations = new List<RegistrationExportInfo>();
         }
     }
 
-    #endregion
+    /// <summary>
+    /// Registration information for export
+    /// </summary>
+    public class RegistrationExportInfo
+    {
+        public string RegistrationName { get; set; }
+        public string RegistrationUID { get; set; }
+        public string FromFrameOfReference { get; set; }
+        public string ToFrameOfReference { get; set; }
+        public RegistrationClass RegistrationData { get; set; }
 
-    #region Export Options and Progress
+        // Source examination info
+        public string SourceExamName { get; set; }
+        public string SourceSeriesInstanceUID { get; set; }
+        public string SourceStudyInstanceUID { get; set; }
+        public ExaminationClass SourceExamData { get; set; }
+
+    }
 
     /// <summary>
-    /// Options for DICOM export
+    /// Options for DICOM export operations
     /// </summary>
     public class DicomExportOptions
     {
-        public bool ExportRegistrationsCBCT { get; set; }
-        public bool ExportRegistrationsCT { get; set; }
-        public bool ExportRegistrationsMR { get; set; }
-        public bool ExportRegistrationsPET { get; set; }
+        // Remote DICOM server settings
+        public string RemoteAETitle { get; set; }
+        public string RemoteIP { get; set; }
+        public int RemotePort { get; set; }
+
+        // Local settings
+        public string LocalAETitle { get; set; }
+        public int LocalPort { get; set; }
+
+        // Export folder
         public string ExportFolder { get; set; }
+
+        // Data type export flags
         public bool ExportExamination { get; set; }
         public bool ExportStructure { get; set; }
         public bool ExportPlan { get; set; }
         public bool ExportDose { get; set; }
         public bool ExportRegistrations { get; set; }
 
-        public string RemoteAETitle { get; set; }
-        public string RemoteIP { get; set; }
-        public int RemotePort { get; set; }
-        public string LocalAETitle { get; set; }
-        public int LocalPort { get; set; }
+        // Registration modality filters
+        public bool ExportRegistrationsCT { get; set; }
+        public bool ExportRegistrationsMR { get; set; }
+        public bool ExportRegistrationsPET { get; set; }
+        public bool ExportRegistrationsCBCT { get; set; }
+
+        public DicomExportOptions()
+        {
+            // Default values
+            RemotePort = 104;
+            LocalPort = 11112;
+            LocalAETitle = "DICOM_EXPORT";
+            ExportExamination = true;
+            ExportStructure = true;
+            ExportPlan = true;
+            ExportDose = true;
+            ExportRegistrations = false;
+            ExportRegistrationsCT = true;
+            ExportRegistrationsMR = true;
+            ExportRegistrationsPET = false;
+            ExportRegistrationsCBCT = false;
+        }
     }
 
     /// <summary>
-    /// Progress information for export operation
+    /// Progress information for DICOM export operations
     /// </summary>
     public class DicomExportProgress
     {

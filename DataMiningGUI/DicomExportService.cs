@@ -1,60 +1,49 @@
 using DataBaseStructure.AriaBase;
-using EvilDICOM.Core;
-using EvilDICOM.Core.Helpers;
-using EvilDICOM.Network;
-using EvilDICOM.Network.DIMSE;
-using EvilDICOM.Network.DIMSE.IOD;
-using EvilDICOM.Network.SCUOps;
+using FellowOakDicom;
+using FellowOakDicom.Network;
+using FellowOakDicom.Network.Client;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using static EvilDICOM.Core.Dictionaries.TagDictionary;
 
 namespace DataMiningGUI
 {
     /// <summary>
-    /// Service for exporting DICOM data using EvilDICOM
+    /// Service for exporting DICOM data using FellowOakDicom (fo-dicom)
     /// </summary>
     public class DicomExportService
     {
-        private DICOMSCU _localSCU;
-        private DICOMSCP _localSCP;
-        private Entity _daemon;
-        private Entity _local;
-        private ConcurrentQueue<string> _receivedFiles;
+        private IDicomServer _localSCP;
         private string _currentExportPath;
-        private ManualResetEventSlim _exportCompleteEvent;
-        private int _expectedFileCount;
+        private ConcurrentQueue<string> _receivedFiles;
         private int _receivedFileCount;
+
+        // Static storage for the SCP to access current export path
+        private static string _staticExportPath;
+        private static ConcurrentQueue<string> _staticReceivedFiles;
 
         /// <summary>
         /// Export selected items to the specified folder using DICOM C-MOVE
         /// </summary>
-        public void ExportAsync(
+        public async Task ExportAsync(
             List<ExportItem> items,
             DicomExportOptions options,
             IProgress<DicomExportProgress> progress,
             CancellationToken cancellationToken)
         {
             _receivedFiles = new ConcurrentQueue<string>();
-            _exportCompleteEvent = new ManualResetEventSlim(false);
+            _staticReceivedFiles = _receivedFiles;
 
             try
             {
-                // Initialize DICOM entities
-                _daemon = new Entity(options.RemoteAETitle, options.RemoteIP, options.RemotePort);
-                _local = Entity.CreateLocal(options.LocalAETitle, options.LocalPort);
-                _localSCU = new DICOMSCU(_local);
-
-                // Setup local SCP to receive files
-                SetupLocalSCP(options);
-
-                // Start listening for incoming associations
-                _localSCP.ListenForIncomingAssociations(true);
+                // Setup and start local SCP to receive files
+                await SetupLocalSCPAsync(options);
 
                 if (progress != null)
                 {
@@ -66,10 +55,6 @@ namespace DataMiningGUI
                             options.RemoteAETitle, options.RemoteIP, options.RemotePort)
                     });
                 }
-
-                // Get finder and mover
-                CFinder cfinder = _localSCU.GetCFinder(_daemon);
-                CMover cmover = _localSCU.GetCMover(_daemon);
 
                 int totalItems = items.Count;
                 int processedItems = 0;
@@ -94,17 +79,18 @@ namespace DataMiningGUI
                     string courseFolder = SanitizeFolderName(item.CourseName);
                     string examFolder = SanitizeFolderName(item.ExamName);
                     _currentExportPath = Path.Combine(options.ExportFolder, patientFolder, courseFolder, examFolder);
+                    _staticExportPath = _currentExportPath;
 
                     // Create subdirectories for each data type
-                    string structureFolder = _currentExportPath;// Path.Combine(_currentExportPath, "Structure");
-                    string doseFolder = _currentExportPath; //Path.Combine(_currentExportPath, "Dose");
-                    string planFolder = _currentExportPath; //Path.Combine(_currentExportPath, "Plan");
-                    string registrationFolder = _currentExportPath; //Path.Combine(_currentExportPath, "Registration");
+                    string structureFolder = _currentExportPath;
+                    string doseFolder = _currentExportPath;
+                    string planFolder = _currentExportPath;
+                    string registrationFolder = _currentExportPath;
 
                     EnsureDirectoryExists(_currentExportPath);
 
-                    // Find studies for this patient
-                    IEnumerable<CFindStudyIOD> studies = cfinder.FindStudies(item.MRN);
+                    // Find studies for this patient using C-FIND
+                    List<DicomDataset> studies = await FindStudiesAsync(item.MRN, options, cancellationToken);
 
                     if (studies == null || !studies.Any())
                     {
@@ -122,59 +108,62 @@ namespace DataMiningGUI
                     }
 
                     // Find all series for the studies
-                    IEnumerable<CFindSeriesIOD> allSeries = cfinder.FindSeries(studies);
-                    ushort msgId = 1;
-
+                    List<DicomDataset> allSeriesBase = await FindSeriesForStudiesAsync(studies, options, cancellationToken);
+                    List<DicomDataset> allSeries = await FindInstancesForSeriesAsync(allSeriesBase, options, cancellationToken);
                     // Export Examination (CT/MR images)
                     if (options.ExportExamination && !string.IsNullOrEmpty(item.SeriesInstanceUID))
                     {
-                        ExportSeriesByUID(cmover, allSeries, item.SeriesInstanceUID,
-                            options.LocalAETitle, ref msgId, _currentExportPath,
-                            "Examination", progress, cancellationToken);
+                        await ExportSeriesByUIDAsync(allSeries, item.SeriesInstanceUID,
+                            options, _currentExportPath, "Examination", progress, cancellationToken);
                     }
 
                     // Export Structure Set, Plan, and Dose by finding related series
                     if (options.ExportStructure || options.ExportPlan || options.ExportDose)
                     {
                         // Find RT Structure Set series
-                        List<CFindSeriesIOD> rtStructSeries = allSeries.Where(s => s.Modality == "RTSTRUCT" && s.SeriesDescription == "ARIA RadOnc Structure Sets").ToList();
-                        rtStructSeries = rtStructSeries.Where(s => IsRelatedToExam(s, item.SeriesInstanceUID)).ToList();
+                        List<DicomDataset> rtStructSeries = allSeries.Where(s =>
+                            GetStringValue(s, DicomTag.Modality) == "RTSTRUCT" &&
+                            GetStringValue(s, DicomTag.SeriesDescription) == "ARIA RadOnc Structure Sets").ToList();
 
                         if (options.ExportStructure && rtStructSeries.Any())
                         {
-                            foreach (CFindSeriesIOD series in rtStructSeries)
+                            foreach (DicomDataset series in rtStructSeries)
                             {
-                                ExportSeries(cmover, series, options.LocalAETitle, ref msgId,
-                                    structureFolder, "Structure", progress, cancellationToken);
+                                await ExportSeriesAsync(series, options, structureFolder,
+                                    "Structure", progress, cancellationToken);
                             }
                         }
 
                         // Find RT Plan series
-                        List<CFindSeriesIOD> rtPlanSeries = allSeries.Where(s => s.Modality == "RTPLAN" && item.AssociatedPlans.Select(p => p.PlanName).Contains(s.SeriesDescription)).ToList();
+                        List<DicomDataset> rtPlanSeries = allSeries.Where(s =>
+                            GetStringValue(s, DicomTag.Modality) == "RTPLAN" &&
+                            item.AssociatedPlans.Select(p => p.PlanName).Contains(GetStringValue(s, DicomTag.SeriesDescription))).ToList();
 
                         if (options.ExportPlan && rtPlanSeries.Any())
                         {
-                            foreach (CFindSeriesIOD series in rtPlanSeries)
+                            foreach (DicomDataset series in rtPlanSeries)
                             {
-                                ExportSeries(cmover, series, options.LocalAETitle, ref msgId,
-                                    planFolder, "Plan", progress, cancellationToken);
+                                await ExportSeriesAsync(series, options, planFolder,
+                                    "Plan", progress, cancellationToken);
                             }
                         }
 
                         // Find RT Dose series
-                        List<CFindSeriesIOD> rtDoseSeries = allSeries.Where(s => s.Modality == "RTDOSE").ToList();
+                        List<DicomDataset> rtDoseSeries = allSeries.Where(s =>
+                            GetStringValue(s, DicomTag.Modality) == "RTDOSE").ToList();
                         HashSet<string> seriesUIDs = new HashSet<string>();
+
                         if (options.ExportDose && rtDoseSeries.Any())
                         {
-                            foreach (CFindSeriesIOD series in rtDoseSeries)
+                            foreach (DicomDataset series in rtDoseSeries)
                             {
-                                if (!seriesUIDs.Contains(series.SeriesInstanceUID))
+                                string seriesUID = GetStringValue(series, DicomTag.SeriesInstanceUID);
+                                if (!string.IsNullOrEmpty(seriesUID) && !seriesUIDs.Contains(seriesUID))
                                 {
-                                    seriesUIDs.Add(series.SeriesInstanceUID);
-                                    ExportSeries(cmover, series, options.LocalAETitle, ref msgId,
-                                        doseFolder, "Dose", progress, cancellationToken);
+                                    seriesUIDs.Add(seriesUID);
+                                    await ExportSeriesAsync(series, options, doseFolder,
+                                        "Dose", progress, cancellationToken);
                                 }
-
                             }
                         }
                     }
@@ -182,16 +171,16 @@ namespace DataMiningGUI
                     // Export Registrations and Associated Images
                     if (options.ExportRegistrations && item.AssociatedRegistrations != null && item.AssociatedRegistrations.Count > 0)
                     {
-                        ExportRegistrationsAndAssociatedImages(
-                            cmover, cfinder, allSeries, item, options.LocalAETitle, ref msgId,
-                            registrationFolder, _currentExportPath, options, progress, cancellationToken);
+                        await ExportRegistrationsAndAssociatedImagesAsync(
+                            allSeries, item, options, registrationFolder, _currentExportPath,
+                            progress, cancellationToken);
                     }
 
                     processedItems++;
                 }
 
                 // Wait a bit for any remaining files to be received
-                Thread.Sleep(2000);
+                await Task.Delay(2000, cancellationToken);
 
                 if (progress != null)
                 {
@@ -208,70 +197,201 @@ namespace DataMiningGUI
                 // Cleanup
                 if (_localSCP != null)
                 {
-                    _localSCP.Stop();
+                    _localSCP.Dispose();
+                    _localSCP = null;
                 }
-                if (_exportCompleteEvent != null)
+            }
+        }
+
+        /// <summary>
+        /// Find studies for a patient using C-FIND
+        /// </summary>
+        private async Task<List<DicomDataset>> FindStudiesAsync(
+            string patientId,
+            DicomExportOptions options,
+            CancellationToken cancellationToken)
+        {
+            List<DicomDataset> results = new List<DicomDataset>();
+
+            DicomCFindRequest request = DicomCFindRequest.CreateStudyQuery(patientId);
+
+            request.OnResponseReceived += (req, response) =>
+            {
+                if (response.Dataset != null)
                 {
-                    _exportCompleteEvent.Dispose();
+                    results.Add(response.Dataset);
                 }
-            }
-        }
-        private string GetExamFrameOfReference(ExaminationClass exam)
-        {
-            if (exam == null) return null;
-            if (exam.EquipmentInfo != null && !string.IsNullOrEmpty(exam.EquipmentInfo.FrameOfReference))
-            {
-                return exam.EquipmentInfo.FrameOfReference;
-            }
-            return null;
+            };
+
+            IDicomClient client = CreateDicomClient(options);
+            await client.AddRequestAsync(request);
+            await client.SendAsync(cancellationToken);
+
+            return results;
         }
 
-        private string GetExamModality(ExaminationClass exam)
+        /// <summary>
+        /// Find all series for the given studies
+        /// </summary>
+        private async Task<List<DicomDataset>> FindSeriesForStudiesAsync(
+            List<DicomDataset> studies,
+            DicomExportOptions options,
+            CancellationToken cancellationToken)
         {
-            if (exam == null) return null;
-            if (exam.EquipmentInfo != null && !string.IsNullOrEmpty(exam.EquipmentInfo.Modality))
+            List<DicomDataset> allSeries = new List<DicomDataset>();
+
+            foreach (DicomDataset study in studies)
             {
-                return exam.EquipmentInfo.Modality;
-            }
-            return null;
-        }
+                string studyInstanceUID = GetStringValue(study, DicomTag.StudyInstanceUID);
+                if (string.IsNullOrEmpty(studyInstanceUID))
+                    continue;
 
-        private bool IsModalityAllowed(string modality, List<string> allowedModalities)
-        {
-            if (string.IsNullOrEmpty(modality) || allowedModalities == null || allowedModalities.Count == 0)
-            {
-                return false;
-            }
+                DicomCFindRequest request = DicomCFindRequest.CreateSeriesQuery(studyInstanceUID);
 
-            // Handle PET/PT equivalence
-            string normalizedModality = modality.ToUpperInvariant();
-            if (normalizedModality == "PT") normalizedModality = "PET";
-
-            foreach (string allowed in allowedModalities)
-            {
-                string normalizedAllowed = allowed.ToUpperInvariant();
-                if (normalizedAllowed == "PT") normalizedAllowed = "PET";
-
-                if (normalizedModality == normalizedAllowed)
+                request.OnResponseReceived += (req, response) =>
                 {
-                    return true;
-                }
+                    if (response.Dataset != null)
+                    {
+                        allSeries.Add(response.Dataset);
+                    }
+                };
+
+                IDicomClient client = CreateDicomClient(options);
+                await client.AddRequestAsync(request);
+                await client.SendAsync(cancellationToken);
             }
-            return false;
+
+            return allSeries;
+        }
+        private async Task<List<DicomDataset>> FindInstancesForSeriesAsync(
+            List<DicomDataset> seriesList,
+            DicomExportOptions options,
+            CancellationToken cancellationToken)
+        {
+            List<DicomDataset> allInstances = new List<DicomDataset>();
+
+            foreach (DicomDataset series in seriesList)
+            {
+                string studyInstanceUID = GetStringValue(series, DicomTag.StudyInstanceUID);
+                string seriesInstanceUID = GetStringValue(series, DicomTag.SeriesInstanceUID);
+
+                if (string.IsNullOrEmpty(studyInstanceUID) || string.IsNullOrEmpty(seriesInstanceUID))
+                    continue;
+
+                DicomCFindRequest request = DicomCFindRequest.CreateImageQuery(
+                    studyInstanceUID,
+                    seriesInstanceUID);
+
+                request.OnResponseReceived += (req, response) =>
+                {
+                    if (response.Dataset != null)
+                    {
+                        allInstances.Add(response.Dataset);
+                    }
+                };
+
+                IDicomClient client = CreateDicomClient(options);
+                await client.AddRequestAsync(request);
+                await client.SendAsync(cancellationToken);
+            }
+
+            return allInstances;
         }
         /// <summary>
-        /// Export registrations and their associated source images (e.g., MR fusions)
+        /// Export a series by its UID
         /// </summary>
-        private void ExportRegistrationsAndAssociatedImages(
-            CMover cmover,
-            CFinder cfinder,
-            IEnumerable<CFindSeriesIOD> allSeries,
+        private async Task ExportSeriesByUIDAsync(
+            List<DicomDataset> allSeries,
+            string seriesInstanceUID,
+            DicomExportOptions options,
+            string exportPath,
+            string dataType,
+            IProgress<DicomExportProgress> progress,
+            CancellationToken cancellationToken)
+        {
+            IEnumerable<DicomDataset> matchingSeries = allSeries.Where(s =>
+                GetStringValue(s, DicomTag.SeriesInstanceUID) == seriesInstanceUID);
+
+            foreach (DicomDataset series in matchingSeries)
+            {
+                await ExportSeriesAsync(series, options, exportPath, dataType, progress, cancellationToken);
+            }
+        }
+
+        /// <summary>
+        /// Export a single series using C-MOVE
+        /// </summary>
+        private async Task ExportSeriesAsync(
+            DicomDataset series,
+            DicomExportOptions options,
+            string exportPath,
+            string dataType,
+            IProgress<DicomExportProgress> progress,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                string seriesInstanceUID = GetStringValue(series, DicomTag.SeriesInstanceUID);
+                string studyInstanceUID = GetStringValue(series, DicomTag.StudyInstanceUID);
+
+                string seriesUidDisplay = "Unknown";
+                if (!string.IsNullOrEmpty(seriesInstanceUID))
+                {
+                    int displayLength = Math.Min(30, seriesInstanceUID.Length);
+                    seriesUidDisplay = seriesInstanceUID.Substring(0, displayLength);
+                }
+
+                if (progress != null)
+                {
+                    progress.Report(new DicomExportProgress
+                    {
+                        PercentComplete = -1, // Indeterminate
+                        StatusMessage = string.Format("Exporting {0}", dataType),
+                        DetailMessage = string.Format("Series: {0}...", seriesUidDisplay)
+                    });
+                }
+
+                _currentExportPath = exportPath;
+                _staticExportPath = exportPath;
+
+                // Create C-MOVE request
+                DicomCMoveRequest moveRequest = new DicomCMoveRequest(
+                    options.LocalAETitle,
+                    studyInstanceUID,
+                    seriesInstanceUID);
+
+                moveRequest.OnResponseReceived += (req, response) =>
+                {
+                    if (response.Status != DicomStatus.Pending && response.Status != DicomStatus.Success)
+                    {
+                        Console.WriteLine(string.Format("C-MOVE response status: {0}", response.Status));
+                    }
+                };
+
+                IDicomClient client = CreateDicomClient(options);
+                await client.AddRequestAsync(moveRequest);
+                await client.SendAsync(cancellationToken);
+
+                // Small delay to allow file reception
+                await Task.Delay(500, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(string.Format("Error exporting series: {0}", ex.Message));
+            }
+        }
+
+        /// <summary>
+        /// Export registrations and their associated source images
+        /// </summary>
+        private async Task ExportRegistrationsAndAssociatedImagesAsync(
+            List<DicomDataset> allSeries,
             ExportItem item,
-            string localAETitle,
-            ref ushort msgId,
+            DicomExportOptions options,
             string registrationFolder,
             string baseExportPath,
-            DicomExportOptions options,
             IProgress<DicomExportProgress> progress,
             CancellationToken cancellationToken)
         {
@@ -315,14 +435,11 @@ namespace DataMiningGUI
             {
                 foreach (RegistrationExportInfo regInfo in item.AssociatedRegistrations)
                 {
-                    // Must match primary exam's FrameOfReference
                     if (regInfo.ToFrameOfReference != primaryFrameOfRef)
                     {
                         continue;
                     }
 
-                    // If CBCT not selected, only include registrations where FromFrameOfReference
-                    // exists in our AssociatedExams
                     if (!includeCBCT)
                     {
                         if (string.IsNullOrEmpty(regInfo.FromFrameOfReference) ||
@@ -337,20 +454,25 @@ namespace DataMiningGUI
             }
 
             // Export the registration object itself
-            List<CFindSeriesIOD> regSeries = allSeries.Where(s =>
-                s.Modality == "REG" || s.Modality == "SPATIAL REGISTRATION").ToList();
+            List<DicomDataset> regSeries = allSeries.Where(s =>
+            {
+                string modality = GetStringValue(s, DicomTag.Modality);
+                return modality == "REG" || modality == "SPATIAL REGISTRATION";
+            }).ToList();
+
             if (!includeCBCT)
             {
-                regSeries = regSeries.Where(rS => rS.SeriesDescription == "Image Registration").ToList();
+                regSeries = regSeries.Where(s =>
+                    GetStringValue(s, DicomTag.SeriesDescription) == "Image Registration").ToList();
             }
-            foreach (CFindSeriesIOD series in regSeries)
+
+            foreach (DicomDataset series in regSeries)
             {
-                ExportSeries(cmover, series, localAETitle, ref msgId,
-                    registrationFolder, "Registration", progress, cancellationToken);
+                await ExportSeriesAsync(series, options, registrationFolder,
+                    "Registration", progress, cancellationToken);
             }
 
             // Export filtered registrations source images
-            // Track exported SeriesInstanceUIDs to avoid duplicates
             HashSet<string> exportedSeriesUIDs = new HashSet<string>();
             foreach (RegistrationExportInfo regInfo in filteredRegistrations)
             {
@@ -372,7 +494,6 @@ namespace DataMiningGUI
                     });
                 }
 
-                // Export source examination from AssociatedExams using modality filter
                 if (!string.IsNullOrEmpty(regInfo.FromFrameOfReference) &&
                     frameOfRefToExams.ContainsKey(regInfo.FromFrameOfReference))
                 {
@@ -382,7 +503,6 @@ namespace DataMiningGUI
                     {
                         string sourceModality = GetExamModality(sourceExam);
 
-                        // Check if this modality is allowed
                         if (IsModalityAllowed(sourceModality, allowedModalities))
                         {
                             string seriesUID = sourceExam.SeriesInstanceUID;
@@ -394,8 +514,7 @@ namespace DataMiningGUI
                                 string examFolder = Path.Combine(baseExportPath, "RegisteredImages", SanitizeFolderName(examName));
                                 EnsureDirectoryExists(examFolder);
 
-                                ExportSeriesByUID(cmover, allSeries, seriesUID,
-                                    localAETitle, ref msgId, examFolder,
+                                await ExportSeriesByUIDAsync(allSeries, seriesUID, options, examFolder,
                                     string.Format("Source Image ({0})", examName), progress, cancellationToken);
                                 exportedSeriesUIDs.Add(seriesUID);
                             }
@@ -410,13 +529,14 @@ namespace DataMiningGUI
                 string cbctFolder = Path.Combine(baseExportPath, "RegisteredImages", "CBCT");
                 EnsureDirectoryExists(cbctFolder);
 
-                List<CFindSeriesIOD> ctSeries = allSeries.Where(s =>
-                    string.Equals(s.Modality, "CT", StringComparison.OrdinalIgnoreCase) &&
-                    s.SeriesInstanceUID != item.SeriesInstanceUID).ToList();
+                List<DicomDataset> ctSeries = allSeries.Where(s =>
+                    string.Equals(GetStringValue(s, DicomTag.Modality), "CT", StringComparison.OrdinalIgnoreCase) &&
+                    GetStringValue(s, DicomTag.SeriesInstanceUID) != item.SeriesInstanceUID).ToList();
 
-                foreach (CFindSeriesIOD series in ctSeries)
+                foreach (DicomDataset series in ctSeries)
                 {
-                    if (!exportedSeriesUIDs.Contains(series.SeriesInstanceUID))
+                    string seriesUID = GetStringValue(series, DicomTag.SeriesInstanceUID);
+                    if (!string.IsNullOrEmpty(seriesUID) && !exportedSeriesUIDs.Contains(seriesUID))
                     {
                         if (progress != null)
                         {
@@ -425,162 +545,108 @@ namespace DataMiningGUI
                                 PercentComplete = -1,
                                 StatusMessage = "Exporting CBCT/CT series",
                                 DetailMessage = string.Format("Series: {0}",
-                                    series.SeriesInstanceUID.Length > 30
-                                        ? series.SeriesInstanceUID.Substring(0, 30) + "..."
-                                        : series.SeriesInstanceUID)
+                                    seriesUID.Length > 30
+                                        ? seriesUID.Substring(0, 30) + "..."
+                                        : seriesUID)
                             });
                         }
 
-                        ExportSeries(cmover, series, localAETitle, ref msgId,
-                            cbctFolder, "CBCT Source", progress, cancellationToken);
-                        exportedSeriesUIDs.Add(series.SeriesInstanceUID);
+                        await ExportSeriesAsync(series, options, cbctFolder,
+                            "CBCT Source", progress, cancellationToken);
+                        exportedSeriesUIDs.Add(seriesUID);
                     }
                 }
             }
         }
 
-        private void SetupLocalSCP(DicomExportOptions options)
+        /// <summary>
+        /// Setup local SCP to receive C-STORE requests
+        /// </summary>
+        private async Task SetupLocalSCPAsync(DicomExportOptions options)
         {
-            _localSCP = new DICOMSCP(_local);
-            _localSCP.SupportedAbstractSyntaxes = AbstractSyntax.ALL_RADIOTHERAPY_STORAGE;
+            // Configure the SCP provider options
+            DicomCStoreReceiverService.ExportPath = options.ExportFolder;
 
-            _localSCP.DIMSEService.CStoreService.CStorePayloadAction = (dcm, asc) =>
-            {
-                try
-                {
-                    // Determine the appropriate subfolder based on modality
-                    string modality = "Unknown";
-                    var modalityElement = dcm.GetSelector().Modality;
-                    if (modalityElement != null && modalityElement.Data != null)
-                    {
-                        modality = modalityElement.Data;
-                    }
+            _localSCP = DicomServerFactory.Create<DicomCStoreReceiverService>(options.LocalPort);
 
-                    string subFolder = GetSubfolderForModality(modality);
-                    string targetPath = _currentExportPath;
-                    if (!string.IsNullOrEmpty(subFolder))
-                    {
-                        targetPath = Path.Combine(_currentExportPath, subFolder);
-                    }
-
-                    // Ensure target directory exists
-                    EnsureDirectoryExists(targetPath);
-
-                    // Get SOP Instance UID for filename
-                    string sopInstanceUID = Guid.NewGuid().ToString();
-                    var sopElement = dcm.GetSelector().SOPInstanceUID;
-                    if (sopElement != null && sopElement.Data != null)
-                    {
-                        sopInstanceUID = sopElement.Data;
-                    }
-
-                    string fileName = sopInstanceUID + ".dcm";
-                    string filePath = Path.Combine(targetPath, fileName);
-
-                    Console.WriteLine(string.Format("Writing file: {0}", filePath));
-                    dcm.Write(filePath);
-
-                    _receivedFiles.Enqueue(filePath);
-                    Interlocked.Increment(ref _receivedFileCount);
-
-                    return true;
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(string.Format("Error writing DICOM file: {0}", ex.Message));
-                    return false;
-                }
-            };
+            // Small delay to ensure server is ready
+            await Task.Delay(100);
         }
 
-        private string GetSubfolderForModality(string modality)
+        /// <summary>
+        /// Create a DICOM client configured for the remote server
+        /// </summary>
+        private IDicomClient CreateDicomClient(DicomExportOptions options)
         {
-            if (string.IsNullOrEmpty(modality))
-            {
-                return string.Empty;
-            }
+            IDicomClient client = DicomClientFactory.Create(
+                options.RemoteIP,
+                options.RemotePort,
+                false,
+                options.LocalAETitle,
+                options.RemoteAETitle);
 
-            switch (modality.ToUpper())
-            {
-                case "RTSTRUCT":
-                    return "Structure";
-                case "RTPLAN":
-                    return "Plan";
-                case "RTDOSE":
-                    return "Dose";
-                case "REG":
-                case "SPATIAL REGISTRATION":
-                    return "Registration";
-                case "CT":
-                case "MR":
-                case "PT":
-                default:
-                    return string.Empty; // Root examination folder
-            }
+            return client;
         }
 
-        private void ExportSeriesByUID(CMover cmover, IEnumerable<CFindSeriesIOD> allSeries,
-            string seriesInstanceUID, string localAETitle, ref ushort msgId,
-            string exportPath, string dataType, IProgress<DicomExportProgress> progress,
-            CancellationToken cancellationToken)
+        /// <summary>
+        /// Get string value from DicomDataset safely
+        /// </summary>
+        private string GetStringValue(DicomDataset dataset, DicomTag tag)
         {
-            IEnumerable<CFindSeriesIOD> matchingSeries = allSeries.Where(s => s.SeriesInstanceUID == seriesInstanceUID);
-
-            foreach (CFindSeriesIOD series in matchingSeries)
-            {
-                ExportSeries(cmover, series, localAETitle, ref msgId, exportPath,
-                    dataType, progress, cancellationToken);
-            }
-        }
-
-        private void ExportSeries(CMover cmover, CFindSeriesIOD series,
-            string localAETitle, ref ushort msgId, string exportPath, string dataType,
-            IProgress<DicomExportProgress> progress, CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
+            if (dataset == null)
+                return null;
 
             try
             {
-                string seriesUidDisplay = "Unknown";
-                if (!string.IsNullOrEmpty(series.SeriesInstanceUID))
-                {
-                    int displayLength = Math.Min(30, series.SeriesInstanceUID.Length);
-                    seriesUidDisplay = series.SeriesInstanceUID.Substring(0, displayLength);
-                }
-
-                if (progress != null)
-                {
-                    progress.Report(new DicomExportProgress
-                    {
-                        PercentComplete = -1, // Indeterminate
-                        StatusMessage = string.Format("Exporting {0}", dataType),
-                        DetailMessage = string.Format("Series: {0}...", seriesUidDisplay)
-                    });
-                }
-
-                _currentExportPath = exportPath;
-                CMoveResponse response = cmover.SendCMove(series, localAETitle, ref msgId);
-
-                if (response.Status != 0)
-                {
-                    Console.WriteLine(string.Format("C-MOVE response status: {0}", response.Status));
-                }
-
-                // Small delay to allow file reception
-                Thread.Sleep(500);
+                return dataset.GetSingleValueOrDefault<string>(tag, null);
             }
-            catch (Exception ex)
+            catch
             {
-                Console.WriteLine(string.Format("Error exporting series: {0}", ex.Message));
+                return null;
             }
         }
 
-        private bool IsRelatedToExam(CFindSeriesIOD series, string examSeriesInstanceUID)
+        private string GetExamFrameOfReference(ExaminationClass exam)
         {
-            // This is a simplified check - in reality, you might need to query
-            // the DICOM relationships more thoroughly
-            // For RT objects, they reference the CT/MR series via Frame of Reference
-            return true; // Accept all RT objects for now - you may want to refine this
+            if (exam == null) return null;
+            if (exam.EquipmentInfo != null && !string.IsNullOrEmpty(exam.EquipmentInfo.FrameOfReference))
+            {
+                return exam.EquipmentInfo.FrameOfReference;
+            }
+            return null;
+        }
+
+        private string GetExamModality(ExaminationClass exam)
+        {
+            if (exam == null) return null;
+            if (exam.EquipmentInfo != null && !string.IsNullOrEmpty(exam.EquipmentInfo.Modality))
+            {
+                return exam.EquipmentInfo.Modality;
+            }
+            return null;
+        }
+
+        private bool IsModalityAllowed(string modality, List<string> allowedModalities)
+        {
+            if (string.IsNullOrEmpty(modality) || allowedModalities == null || allowedModalities.Count == 0)
+            {
+                return false;
+            }
+
+            string normalizedModality = modality.ToUpperInvariant();
+            if (normalizedModality == "PT") normalizedModality = "PET";
+
+            foreach (string allowed in allowedModalities)
+            {
+                string normalizedAllowed = allowed.ToUpperInvariant();
+                if (normalizedAllowed == "PT") normalizedAllowed = "PET";
+
+                if (normalizedModality == normalizedAllowed)
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         private void EnsureDirectoryExists(string path)
@@ -612,6 +678,119 @@ namespace DataMiningGUI
     }
 
     /// <summary>
+    /// DICOM C-STORE SCP service to receive and save incoming DICOM files
+    /// </summary>
+    public class DicomCStoreReceiverService : DicomService, IDicomServiceProvider, IDicomCStoreProvider
+    {
+        private static readonly object _lock = new object();
+        private static string _exportPath;
+
+        public static string ExportPath
+        {
+            get { lock (_lock) { return _exportPath; } }
+            set { lock (_lock) { _exportPath = value; } }
+        }
+
+        public DicomCStoreReceiverService(INetworkStream stream, Encoding fallbackEncoding, ILogger log, DicomServiceDependencies dependencies)
+            : base(stream, fallbackEncoding, log, dependencies)
+        {
+        }
+
+        public Task OnReceiveAssociationRequestAsync(DicomAssociation association)
+        {
+            foreach (DicomPresentationContext pc in association.PresentationContexts)
+            {
+                pc.SetResult(DicomPresentationContextResult.Accept);
+            }
+            return SendAssociationAcceptAsync(association);
+        }
+
+        public Task OnReceiveAssociationReleaseRequestAsync()
+        {
+            return SendAssociationReleaseResponseAsync();
+        }
+
+        public void OnReceiveAbort(DicomAbortSource source, DicomAbortReason reason)
+        {
+            Console.WriteLine(string.Format("Association aborted: {0} - {1}", source, reason));
+        }
+
+        public void OnConnectionClosed(Exception exception)
+        {
+            if (exception != null)
+            {
+                Console.WriteLine(string.Format("Connection closed with exception: {0}", exception.Message));
+            }
+        }
+
+        public Task<DicomCStoreResponse> OnCStoreRequestAsync(DicomCStoreRequest request)
+        {
+            try
+            {
+                string modality = request.Dataset.GetSingleValueOrDefault<string>(DicomTag.Modality, "Unknown");
+                string subFolder = GetSubfolderForModality(modality);
+                string targetPath = ExportPath;
+
+                if (!string.IsNullOrEmpty(subFolder))
+                {
+                    targetPath = Path.Combine(ExportPath, subFolder);
+                }
+
+                if (!Directory.Exists(targetPath))
+                {
+                    Directory.CreateDirectory(targetPath);
+                }
+
+                string sopInstanceUID = request.SOPInstanceUID.UID;
+                string fileName = sopInstanceUID + ".dcm";
+                string filePath = Path.Combine(targetPath, fileName);
+
+                Console.WriteLine(string.Format("Writing file: {0}", filePath));
+                request.File.Save(filePath);
+
+                return Task.FromResult(new DicomCStoreResponse(request, DicomStatus.Success));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(string.Format("Error writing DICOM file: {0}", ex.Message));
+                return Task.FromResult(new DicomCStoreResponse(request, DicomStatus.ProcessingFailure));
+            }
+        }
+
+        public Task OnCStoreRequestExceptionAsync(string tempFileName, Exception e)
+        {
+            Console.WriteLine(string.Format("C-STORE exception: {0}", e.Message));
+            return Task.CompletedTask;
+        }
+
+        private string GetSubfolderForModality(string modality)
+        {
+            if (string.IsNullOrEmpty(modality))
+            {
+                return string.Empty;
+            }
+
+            switch (modality.ToUpper())
+            {
+                case "RTSTRUCT":
+                    return "Structure";
+                case "RTPLAN":
+                    return "Plan";
+                case "RTDOSE":
+                    return "Dose";
+                case "REG":
+                case "SPATIAL REGISTRATION":
+                    return "Registration";
+                case "CT":
+                case "MR":
+                case "PT":
+                default:
+                    return string.Empty;
+            }
+        }
+    }
+
+    /// <summary>
     /// Alternative export service that exports directly without C-MOVE 
     /// (useful when you have local access to DICOM files)
     /// </summary>
@@ -620,7 +799,7 @@ namespace DataMiningGUI
         /// <summary>
         /// Export by copying DICOM files from a source directory
         /// </summary>
-        public void ExportFromDirectory(
+        public Task ExportFromDirectoryAsync(
             List<ExportItem> items,
             DicomExportOptions options,
             string sourceDicomDirectory,
@@ -682,6 +861,8 @@ namespace DataMiningGUI
                     DetailMessage = string.Format("Processed {0} examination(s)", processedItems)
                 });
             }
+
+            return Task.CompletedTask;
         }
 
         private void EnsureDirectoryExists(string path)

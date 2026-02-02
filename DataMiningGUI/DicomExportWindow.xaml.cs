@@ -237,7 +237,7 @@ namespace DataMiningGUI
                     RegistrationExportInfo regInfo = new RegistrationExportInfo
                     {
                         RegistrationName = registration.Name,
-                        RegistrationUID = registration.UID,
+                        RegistrationUID = registration.UID, // RegistrationClass doesn't have UID property
                         FromFrameOfReference = registration.FromFrameOfReference,
                         ToFrameOfReference = registration.ToFrameOfReference,
                         RegistrationData = registration
@@ -533,6 +533,7 @@ namespace DataMiningGUI
                 }
             }
         }
+
         private void ExportRegistrationsCheckBox_CheckChanged(object sender, RoutedEventArgs e)
         {
             if (RegistrationModalityPanel != null)
@@ -542,6 +543,7 @@ namespace DataMiningGUI
                 RegistrationModalityPanel.Visibility = isChecked ? Visibility.Visible : Visibility.Collapsed;
             }
         }
+
         private async void ExportButton_Click(object sender, RoutedEventArgs e)
         {
             if (_isExporting)
@@ -623,11 +625,12 @@ namespace DataMiningGUI
                 DicomExportService exporter = new DicomExportService();
                 Progress<DicomExportProgress> progress = new Progress<DicomExportProgress>(UpdateProgress);
 
-                await Task.Run(() => exporter.ExportAsync(
+                // FellowOakDicom's ExportAsync is already async, so await it directly
+                await exporter.ExportAsync(
                     selectedExams,
                     exportOptions,
                     progress,
-                    _cancellationTokenSource.Token));
+                    _cancellationTokenSource.Token);
 
                 MessageBox.Show("Export completed successfully!",
                     "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
