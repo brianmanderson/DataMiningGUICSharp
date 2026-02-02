@@ -25,8 +25,6 @@ namespace DataMiningGUI
         /// <summary>
         /// Constructor that accepts filtered PatientDisplayItems and full patient data
         /// </summary>
-        /// <param name="filteredDisplayItems">The filtered display items from MainWindow</param>
-        /// <param name="allPatients">The complete patient data for DICOM lookup</param>
         public DicomExportWindow(List<PatientDisplayItem> filteredDisplayItems, List<PatientClass> allPatients)
         {
             InitializeComponent();
@@ -87,6 +85,20 @@ namespace DataMiningGUI
                     PatientData = patient
                 };
 
+                // Build lookup for examinations by FrameOfReference
+                Dictionary<string, ExaminationClass> frameOfRefToExam = new Dictionary<string, ExaminationClass>();
+                if (patient.Examinations != null)
+                {
+                    foreach (ExaminationClass exam in patient.Examinations)
+                    {
+                        string frameOfRef = GetFrameOfReference(exam);
+                        if (!string.IsNullOrEmpty(frameOfRef) && !frameOfRefToExam.ContainsKey(frameOfRef))
+                        {
+                            frameOfRefToExam[frameOfRef] = exam;
+                        }
+                    }
+                }
+
                 // Get the courses that were in the filtered results for this patient
                 HashSet<string> filteredCourseNames = mrnToCourses.ContainsKey(patient.MRN)
                     ? mrnToCourses[patient.MRN]
@@ -127,8 +139,6 @@ namespace DataMiningGUI
                         {
                             foreach (ExaminationClass exam in patient.Examinations)
                             {
-                                // Include exams that are referenced by plans in this course
-                                // or include all if no plans exist
                                 if (referencedExamNames.Count == 0 || referencedExamNames.Contains(exam.ExamName))
                                 {
                                     List<TreatmentPlanClass> associatedPlans = new List<TreatmentPlanClass>();
@@ -139,13 +149,21 @@ namespace DataMiningGUI
                                             .ToList();
                                     }
 
+                                    string examFrameOfRef = GetFrameOfReference(exam);
+
+                                    // Find registrations where this exam is the target (ToFrameOfReference)
+                                    List<RegistrationExportInfo> associatedRegistrations = 
+                                        FindAssociatedRegistrations(patient, exam, examFrameOfRef, frameOfRefToExam);
+
                                     ExportExaminationItem exportExam = new ExportExaminationItem
                                     {
                                         ExamName = exam.ExamName,
                                         SeriesInstanceUID = exam.SeriesInstanceUID,
                                         StudyInstanceUID = exam.StudyInstanceUID,
+                                        FrameOfReferenceUID = examFrameOfRef,
                                         ExamData = exam,
                                         AssociatedPlans = associatedPlans,
+                                        AssociatedRegistrations = associatedRegistrations,
                                         Parent = exportCourse
                                     };
 
@@ -154,7 +172,6 @@ namespace DataMiningGUI
                             }
                         }
 
-                        // Only add course if it has examinations
                         if (exportCourse.Examinations.Count > 0)
                         {
                             exportPatient.Courses.Add(exportCourse);
@@ -162,7 +179,6 @@ namespace DataMiningGUI
                     }
                 }
 
-                // Only add patient if they have courses with examinations
                 if (exportPatient.Courses.Count > 0)
                 {
                     _patients.Add(exportPatient);
@@ -170,6 +186,76 @@ namespace DataMiningGUI
             }
 
             UpdateSelectionSummary();
+        }
+
+        /// <summary>
+        /// Get the Frame of Reference UID from an examination
+        /// </summary>
+        private string GetFrameOfReference(ExaminationClass exam)
+        {
+            if (exam == null)
+            {
+                return null;
+            }
+            if (exam.EquipmentInfo != null && !string.IsNullOrEmpty(exam.EquipmentInfo.FrameOfReference))
+            {
+                return exam.EquipmentInfo.FrameOfReference;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Find registrations where the given examination is the target (ToFrameOfReference matches)
+        /// and resolve the source examinations
+        /// </summary>
+        private List<RegistrationExportInfo> FindAssociatedRegistrations(
+            PatientClass patient,
+            ExaminationClass targetExam,
+            string targetFrameOfRef,
+            Dictionary<string, ExaminationClass> frameOfRefToExam)
+        {
+            List<RegistrationExportInfo> result = new List<RegistrationExportInfo>();
+
+            if (patient.Registrations == null || string.IsNullOrEmpty(targetFrameOfRef))
+            {
+                return result;
+            }
+
+            foreach (RegistrationClass registration in patient.Registrations)
+            {
+                // Check if this exam is the target of the registration
+                if (registration.ToFrameOfReference == targetFrameOfRef)
+                {
+                    // Find the source examination by FromFrameOfReference
+                    ExaminationClass sourceExam = null;
+                    if (!string.IsNullOrEmpty(registration.FromFrameOfReference) &&
+                        frameOfRefToExam.ContainsKey(registration.FromFrameOfReference))
+                    {
+                        sourceExam = frameOfRefToExam[registration.FromFrameOfReference];
+                    }
+
+                    RegistrationExportInfo regInfo = new RegistrationExportInfo
+                    {
+                        RegistrationName = registration.Name,
+                        RegistrationUID = registration.UID,
+                        FromFrameOfReference = registration.FromFrameOfReference,
+                        ToFrameOfReference = registration.ToFrameOfReference,
+                        RegistrationData = registration
+                    };
+
+                    if (sourceExam != null)
+                    {
+                        regInfo.SourceExamName = sourceExam.ExamName;
+                        regInfo.SourceSeriesInstanceUID = sourceExam.SeriesInstanceUID;
+                        regInfo.SourceStudyInstanceUID = sourceExam.StudyInstanceUID;
+                        regInfo.SourceExamData = sourceExam;
+                    }
+
+                    result.Add(regInfo);
+                }
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -188,6 +274,20 @@ namespace DataMiningGUI
                     LastName = patient.Name_Last,
                     PatientData = patient
                 };
+
+                // Build lookup for examinations by FrameOfReference
+                Dictionary<string, ExaminationClass> frameOfRefToExam = new Dictionary<string, ExaminationClass>();
+                if (patient.Examinations != null)
+                {
+                    foreach (ExaminationClass exam in patient.Examinations)
+                    {
+                        string frameOfRef = GetFrameOfReference(exam);
+                        if (!string.IsNullOrEmpty(frameOfRef) && !frameOfRefToExam.ContainsKey(frameOfRef))
+                        {
+                            frameOfRefToExam[frameOfRef] = exam;
+                        }
+                    }
+                }
 
                 if (patient.Courses != null)
                 {
@@ -226,13 +326,19 @@ namespace DataMiningGUI
                                             .ToList();
                                     }
 
+                                    string examFrameOfRef = GetFrameOfReference(exam);
+                                    List<RegistrationExportInfo> associatedRegistrations =
+                                        FindAssociatedRegistrations(patient, exam, examFrameOfRef, frameOfRefToExam);
+
                                     ExportExaminationItem exportExam = new ExportExaminationItem
                                     {
                                         ExamName = exam.ExamName,
                                         SeriesInstanceUID = exam.SeriesInstanceUID,
                                         StudyInstanceUID = exam.StudyInstanceUID,
+                                        FrameOfReferenceUID = examFrameOfRef,
                                         ExamData = exam,
                                         AssociatedPlans = associatedPlans,
+                                        AssociatedRegistrations = associatedRegistrations,
                                         Parent = exportCourse
                                     };
 
@@ -427,7 +533,15 @@ namespace DataMiningGUI
                 }
             }
         }
-
+        private void ExportRegistrationsCheckBox_CheckChanged(object sender, RoutedEventArgs e)
+        {
+            if (RegistrationModalityPanel != null)
+            {
+                bool isChecked = ExportRegistrationsCheckBox.IsChecked.HasValue &&
+                                 ExportRegistrationsCheckBox.IsChecked.Value;
+                RegistrationModalityPanel.Visibility = isChecked ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
         private async void ExportButton_Click(object sender, RoutedEventArgs e)
         {
             if (_isExporting)
@@ -455,8 +569,9 @@ namespace DataMiningGUI
             bool exportStruct = ExportStructureCheckBox.IsChecked.HasValue && ExportStructureCheckBox.IsChecked.Value;
             bool exportPlan = ExportPlanCheckBox.IsChecked.HasValue && ExportPlanCheckBox.IsChecked.Value;
             bool exportDose = ExportDoseCheckBox.IsChecked.HasValue && ExportDoseCheckBox.IsChecked.Value;
+            bool exportRegs = ExportRegistrationsCheckBox.IsChecked.HasValue && ExportRegistrationsCheckBox.IsChecked.Value;
 
-            if (!exportExam && !exportStruct && !exportPlan && !exportDose)
+            if (!exportExam && !exportStruct && !exportPlan && !exportDose && !exportRegs)
             {
                 MessageBox.Show("Please select at least one data type to export.",
                     "No Data Type", MessageBoxButton.OK, MessageBoxImage.Warning);
@@ -486,6 +601,10 @@ namespace DataMiningGUI
                 ExportStructure = exportStruct,
                 ExportPlan = exportPlan,
                 ExportDose = exportDose,
+                ExportRegistrations = exportRegs,
+                ExportRegistrationsCT = ExportRegCTCheckBox.IsChecked.HasValue && ExportRegCTCheckBox.IsChecked.Value,
+                ExportRegistrationsMR = ExportRegMRCheckBox.IsChecked.HasValue && ExportRegMRCheckBox.IsChecked.Value,
+                ExportRegistrationsPET = ExportRegPETCheckBox.IsChecked.HasValue && ExportRegPETCheckBox.IsChecked.Value,
                 RemoteAETitle = RemoteAETitleTextBox.Text.Trim(),
                 RemoteIP = RemoteIPTextBox.Text.Trim(),
                 RemotePort = remotePort,
@@ -554,8 +673,10 @@ namespace DataMiningGUI
                                 ExamName = exam.ExamName,
                                 SeriesInstanceUID = exam.SeriesInstanceUID,
                                 StudyInstanceUID = exam.StudyInstanceUID,
+                                FrameOfReferenceUID = exam.FrameOfReferenceUID,
                                 AssociatedPlans = exam.AssociatedPlans,
-                                ExamData = exam.ExamData
+                                ExamData = exam.ExamData,
+                                AssociatedRegistrations = exam.AssociatedRegistrations
                             });
                         }
                     }
@@ -601,36 +722,4 @@ namespace DataMiningGUI
 
         #endregion
     }
-
-    #region Export Options and Progress
-
-    /// <summary>
-    /// Options for DICOM export
-    /// </summary>
-    public class DicomExportOptions
-    {
-        public string ExportFolder { get; set; }
-        public bool ExportExamination { get; set; }
-        public bool ExportStructure { get; set; }
-        public bool ExportPlan { get; set; }
-        public bool ExportDose { get; set; }
-
-        public string RemoteAETitle { get; set; }
-        public string RemoteIP { get; set; }
-        public int RemotePort { get; set; }
-        public string LocalAETitle { get; set; }
-        public int LocalPort { get; set; }
-    }
-
-    /// <summary>
-    /// Progress information for export operation
-    /// </summary>
-    public class DicomExportProgress
-    {
-        public int PercentComplete { get; set; }
-        public string StatusMessage { get; set; }
-        public string DetailMessage { get; set; }
-    }
-
-    #endregion
 }

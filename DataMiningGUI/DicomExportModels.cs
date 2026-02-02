@@ -105,13 +105,20 @@ namespace DataMiningGUI
         public string ExamName { get; set; }
         public string SeriesInstanceUID { get; set; }
         public string StudyInstanceUID { get; set; }
+        public string FrameOfReferenceUID { get; set; }
         public ExaminationClass ExamData { get; set; }
         public List<TreatmentPlanClass> AssociatedPlans { get; set; }
         public ExportCourseItem Parent { get; set; }
 
+        /// <summary>
+        /// Registrations where this exam is the target (ToFrameOfReference)
+        /// </summary>
+        public List<RegistrationExportInfo> AssociatedRegistrations { get; set; }
+
         public ExportExaminationItem()
         {
             AssociatedPlans = new List<TreatmentPlanClass>();
+            AssociatedRegistrations = new List<RegistrationExportInfo>();
         }
 
         public string AssociatedPlansText
@@ -123,6 +130,18 @@ namespace DataMiningGUI
                     return string.Empty;
                 }
                 return string.Format("({0} plan(s))", AssociatedPlans.Count);
+            }
+        }
+
+        public string AssociatedRegistrationsText
+        {
+            get
+            {
+                if (AssociatedRegistrations == null || AssociatedRegistrations.Count == 0)
+                {
+                    return string.Empty;
+                }
+                return string.Format("[{0} reg]", AssociatedRegistrations.Count);
             }
         }
 
@@ -149,6 +168,57 @@ namespace DataMiningGUI
     }
 
     /// <summary>
+    /// Information about a registration and its associated source examination
+    /// </summary>
+    public class RegistrationExportInfo
+    {
+        /// <summary>
+        /// The registration name
+        /// </summary>
+        public string RegistrationName { get; set; }
+
+        /// <summary>
+        /// The registration UID for DICOM export
+        /// </summary>
+        public string RegistrationUID { get; set; }
+
+        /// <summary>
+        /// The source examination name (the "From" in the registration)
+        /// </summary>
+        public string SourceExamName { get; set; }
+
+        /// <summary>
+        /// The source examination's SeriesInstanceUID for DICOM export
+        /// </summary>
+        public string SourceSeriesInstanceUID { get; set; }
+
+        /// <summary>
+        /// The source examination's StudyInstanceUID
+        /// </summary>
+        public string SourceStudyInstanceUID { get; set; }
+
+        /// <summary>
+        /// The FromFrameOfReference UID
+        /// </summary>
+        public string FromFrameOfReference { get; set; }
+
+        /// <summary>
+        /// The ToFrameOfReference UID (should match the plan exam's frame of reference)
+        /// </summary>
+        public string ToFrameOfReference { get; set; }
+
+        /// <summary>
+        /// Reference to the full examination data
+        /// </summary>
+        public ExaminationClass SourceExamData { get; set; }
+
+        /// <summary>
+        /// Reference to the full registration data
+        /// </summary>
+        public RegistrationClass RegistrationData { get; set; }
+    }
+
+    /// <summary>
     /// Flattened export item for processing by DicomExportService
     /// </summary>
     public class ExportItem
@@ -159,13 +229,58 @@ namespace DataMiningGUI
         public string ExamName { get; set; }
         public string SeriesInstanceUID { get; set; }
         public string StudyInstanceUID { get; set; }
+        public string FrameOfReferenceUID { get; set; }
         public List<TreatmentPlanClass> AssociatedPlans { get; set; }
         public ExaminationClass ExamData { get; set; }
+
+        /// <summary>
+        /// Registrations and their associated source images to export
+        /// </summary>
+        public List<RegistrationExportInfo> AssociatedRegistrations { get; set; }
+        public List<ExaminationClass> AssociatedExams { get; set; }
 
         public ExportItem()
         {
             AssociatedPlans = new List<TreatmentPlanClass>();
+            AssociatedRegistrations = new List<RegistrationExportInfo>();
+            AssociatedExams = new List<ExaminationClass>();
         }
+    }
+
+    #endregion
+
+    #region Export Options and Progress
+
+    /// <summary>
+    /// Options for DICOM export
+    /// </summary>
+    public class DicomExportOptions
+    {
+        public bool ExportRegistrationsCT { get; set; }
+        public bool ExportRegistrationsMR { get; set; }
+        public bool ExportRegistrationsPET { get; set; }
+        public string ExportFolder { get; set; }
+        public bool ExportExamination { get; set; }
+        public bool ExportStructure { get; set; }
+        public bool ExportPlan { get; set; }
+        public bool ExportDose { get; set; }
+        public bool ExportRegistrations { get; set; }
+
+        public string RemoteAETitle { get; set; }
+        public string RemoteIP { get; set; }
+        public int RemotePort { get; set; }
+        public string LocalAETitle { get; set; }
+        public int LocalPort { get; set; }
+    }
+
+    /// <summary>
+    /// Progress information for export operation
+    /// </summary>
+    public class DicomExportProgress
+    {
+        public int PercentComplete { get; set; }
+        public string StatusMessage { get; set; }
+        public string DetailMessage { get; set; }
     }
 
     #endregion

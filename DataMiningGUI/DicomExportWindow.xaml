@@ -123,6 +123,8 @@
                                     <TextBlock Text="{Binding ExamName}"/>
                                     <TextBlock Text="{Binding AssociatedPlansText}" 
                                                Foreground="#888888" Margin="8,0,0,0" FontSize="11"/>
+                                    <TextBlock Text="{Binding AssociatedRegistrationsText}" 
+                                               Foreground="#9C27B0" Margin="4,0,0,0" FontSize="11"/>
                                 </StackPanel>
                             </DataTemplate>
                         </TreeView.Resources>
@@ -139,15 +141,31 @@
                     <TextBlock Text="Data Types to Export:" FontWeight="Medium" 
                                Margin="0,0,0,8" Foreground="#555555"/>
                     
-                    <CheckBox x:Name="ExportExaminationCheckBox" Content="Examination (CT/MR Images)"
+                    <CheckBox x:Name="ExportExaminationCheckBox" Content="Examination"
                               Style="{StaticResource CheckBoxStyle}" IsChecked="True"/>
-                    <CheckBox x:Name="ExportStructureCheckBox" Content="Structure Set (ROIs)"
+                    <CheckBox x:Name="ExportStructureCheckBox" Content="Structure Set"
                               Style="{StaticResource CheckBoxStyle}" IsChecked="True"/>
                     <CheckBox x:Name="ExportPlanCheckBox" Content="RT Plan"
                               Style="{StaticResource CheckBoxStyle}" IsChecked="True"/>
                     <CheckBox x:Name="ExportDoseCheckBox" Content="RT Dose"
                               Style="{StaticResource CheckBoxStyle}" IsChecked="True"/>
-                    
+                    <CheckBox x:Name="ExportRegistrationsCheckBox" Content="Registrations (+ Images)"
+                              Style="{StaticResource CheckBoxStyle}" IsChecked="False"
+                              Checked="ExportRegistrationsCheckBox_CheckChanged"
+                              Unchecked="ExportRegistrationsCheckBox_CheckChanged"
+                              ToolTip="Export registrations and their associated source images"/>
+
+                    <!-- Registration Modality Sub-options -->
+                    <StackPanel x:Name="RegistrationModalityPanel" Margin="20,0,0,0" Visibility="Collapsed">
+                        <TextBlock Text="Source Image Modalities:" FontSize="11" Foreground="#666666" Margin="0,4,0,4"/>
+                        <CheckBox x:Name="ExportRegCTCheckBox" Content="CT"
+                                  Style="{StaticResource CheckBoxStyle}" IsChecked="True"/>
+                        <CheckBox x:Name="ExportRegMRCheckBox" Content="MR"
+                                  Style="{StaticResource CheckBoxStyle}" IsChecked="True"/>
+                        <CheckBox x:Name="ExportRegPETCheckBox" Content="PET"
+                                  Style="{StaticResource CheckBoxStyle}" IsChecked="True"/>
+                    </StackPanel>
+
                     <Separator Margin="0,16"/>
                     
                     <TextBlock Text="DICOM Connection" Style="{StaticResource SectionHeader}"/>

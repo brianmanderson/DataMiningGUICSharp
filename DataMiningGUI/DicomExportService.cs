@@ -61,7 +61,7 @@ namespace DataMiningGUI
                     {
                         PercentComplete = 0,
                         StatusMessage = "Connected to DICOM server",
-                        DetailMessage = string.Format("Remote: {0}@{1}:{2}", 
+                        DetailMessage = string.Format("Remote: {0}@{1}:{2}",
                             options.RemoteAETitle, options.RemoteIP, options.RemotePort)
                     });
                 }
@@ -83,7 +83,7 @@ namespace DataMiningGUI
                         {
                             PercentComplete = (int)((double)processedItems / totalItems * 100),
                             StatusMessage = string.Format("Processing: {0}", item.MRN),
-                            DetailMessage = string.Format("Exam: {0} ({1}/{2})", 
+                            DetailMessage = string.Format("Exam: {0} ({1}/{2})",
                                 item.ExamName, processedItems + 1, totalItems)
                         });
                     }
@@ -98,20 +98,9 @@ namespace DataMiningGUI
                     string structureFolder = _currentExportPath;// Path.Combine(_currentExportPath, "Structure");
                     string doseFolder = _currentExportPath; //Path.Combine(_currentExportPath, "Dose");
                     string planFolder = _currentExportPath; //Path.Combine(_currentExportPath, "Plan");
+                    string registrationFolder = _currentExportPath; //Path.Combine(_currentExportPath, "Registration");
 
                     EnsureDirectoryExists(_currentExportPath);
-                    if (options.ExportStructure)
-                    {
-                        EnsureDirectoryExists(structureFolder);
-                    }
-                    if (options.ExportDose)
-                    {
-                        EnsureDirectoryExists(doseFolder);
-                    }
-                    if (options.ExportPlan)
-                    {
-                        EnsureDirectoryExists(planFolder);
-                    }
 
                     // Find studies for this patient
                     IEnumerable<CFindStudyIOD> studies = cfinder.FindStudies(item.MRN);
@@ -189,6 +178,14 @@ namespace DataMiningGUI
                         }
                     }
 
+                    // Export Registrations and Associated Images
+                    if (options.ExportRegistrations && item.AssociatedRegistrations != null && item.AssociatedRegistrations.Count > 0)
+                    {
+                        ExportRegistrationsAndAssociatedImages(
+                            cmover, cfinder, allSeries, item, options.LocalAETitle, ref msgId,
+                            registrationFolder, _currentExportPath, options, progress, cancellationToken);
+                    }
+
                     processedItems++;
                 }
 
@@ -215,6 +212,106 @@ namespace DataMiningGUI
                 if (_exportCompleteEvent != null)
                 {
                     _exportCompleteEvent.Dispose();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Export registrations and their associated source images (e.g., MR fusions)
+        /// </summary>
+        private void ExportRegistrationsAndAssociatedImages(
+            CMover cmover,
+            CFinder cfinder,
+            IEnumerable<CFindSeriesIOD> allSeries,
+            ExportItem item,
+            string localAETitle,
+            ref ushort msgId,
+            string registrationFolder,
+            string baseExportPath,
+            DicomExportOptions options,  // Add this parameter
+            IProgress<DicomExportProgress> progress,
+            CancellationToken cancellationToken)
+        {
+            foreach (RegistrationExportInfo regInfo in item.AssociatedRegistrations)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Create a subfolder for each registration's source image
+                string sourceExamName = !string.IsNullOrEmpty(regInfo.SourceExamName)
+                    ? regInfo.SourceExamName
+                    : "UnknownSource";
+                string sourceImageFolder = Path.Combine(baseExportPath, "RegisteredImages", SanitizeFolderName(sourceExamName));
+                EnsureDirectoryExists(sourceImageFolder);
+
+                if (progress != null)
+                {
+                    progress.Report(new DicomExportProgress
+                    {
+                        PercentComplete = -1,
+                        StatusMessage = string.Format("Exporting Registration: {0}", regInfo.RegistrationName),
+                        DetailMessage = string.Format("Source: {0}", sourceExamName)
+                    });
+                }
+
+                // Export the registration object itself by UID
+                if (!string.IsNullOrEmpty(regInfo.RegistrationUID))
+                {
+                    // Find REG series by looking for Spatial Registration modality
+                    List<CFindSeriesIOD> regSeries = allSeries.Where(s =>
+                        s.Modality == "REG" || s.Modality == "SPATIAL REGISTRATION").ToList();
+
+                    // Try to find by SeriesInstanceUID if the registration UID matches
+                    foreach (CFindSeriesIOD series in regSeries)
+                    {
+                        // Export all REG series - in practice you might want to filter more specifically
+                        ExportSeries(cmover, series, localAETitle, ref msgId,
+                            registrationFolder, "Registration", progress, cancellationToken);
+                    }
+                }
+
+                // Export the source examination images (the "From" side of the registration)
+                if (!string.IsNullOrEmpty(regInfo.SourceSeriesInstanceUID))
+                {
+                    ExportSeriesByUID(cmover, allSeries, regInfo.SourceSeriesInstanceUID,
+                        localAETitle, ref msgId, sourceImageFolder,
+                        string.Format("Source Image ({0})", sourceExamName), progress, cancellationToken);
+                }
+                else if (!string.IsNullOrEmpty(regInfo.FromFrameOfReference))
+                {
+                    // If we don't have SeriesInstanceUID but have FromFrameOfReference,
+                    // try to find the series by matching Frame of Reference
+                    if (progress != null)
+                    {
+                        progress.Report(new DicomExportProgress
+                        {
+                            PercentComplete = -1,
+                            StatusMessage = "Searching for source image by Frame of Reference",
+                            DetailMessage = string.Format("FrameOfRef: {0}", 
+                                regInfo.FromFrameOfReference.Length > 30 
+                                    ? regInfo.FromFrameOfReference.Substring(0, 30) + "..." 
+                                    : regInfo.FromFrameOfReference)
+                        });
+                    }
+
+                    // Note: C-FIND at series level doesn't typically include Frame of Reference
+                    // You may need to fetch at image level or use a different strategy
+                    // For now, we'll try exporting any CT/MR series that might match
+                    List<string> allowedModalities = new List<string>();
+                    if (options.ExportRegistrationsCT) allowedModalities.Add("CT");
+                    if (options.ExportRegistrationsMR) allowedModalities.Add("MR");
+                    if (options.ExportRegistrationsPET) { allowedModalities.Add("PT"); allowedModalities.Add("PET"); }
+
+                    List<CFindSeriesIOD> imageSeries = allSeries.Where(s =>
+                        allowedModalities.Contains(s.Modality, StringComparer.OrdinalIgnoreCase)).ToList();
+
+                    foreach (CFindSeriesIOD series in imageSeries)
+                    {
+                        if (series.SeriesInstanceUID != item.SeriesInstanceUID) // Don't re-export the primary exam
+                        {
+                            ExportSeries(cmover, series, localAETitle, ref msgId,
+                                sourceImageFolder, "Source Image", progress, cancellationToken);
+                        }
+                    }
                 }
             }
         }
@@ -288,6 +385,9 @@ namespace DataMiningGUI
                     return "Plan";
                 case "RTDOSE":
                     return "Dose";
+                case "REG":
+                case "SPATIAL REGISTRATION":
+                    return "Registration";
                 case "CT":
                 case "MR":
                 case "PT":
@@ -441,10 +541,11 @@ namespace DataMiningGUI
                 {
                     EnsureDirectoryExists(Path.Combine(exportPath, "Plan"));
                 }
-
-                // Find and copy relevant DICOM files
-                // This would require knowing where the source DICOM files are stored
-                // and matching them by Series Instance UID
+                if (options.ExportRegistrations)
+                {
+                    EnsureDirectoryExists(Path.Combine(exportPath, "Registration"));
+                    EnsureDirectoryExists(Path.Combine(exportPath, "RegisteredImages"));
+                }
 
                 processedItems++;
             }
