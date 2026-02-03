@@ -108,8 +108,7 @@ namespace DataMiningGUI
                     }
 
                     // Find all series for the studies
-                    List<DicomDataset> allSeriesBase = await FindSeriesForStudiesAsync(studies, options, cancellationToken);
-                    List<DicomDataset> allSeries = await FindInstancesForSeriesAsync(allSeriesBase, options, cancellationToken);
+                    List<DicomDataset> allSeries = await FindSeriesForStudiesAsync(studies, options, cancellationToken);
                     // Export Examination (CT/MR images)
                     if (options.ExportExamination && !string.IsNullOrEmpty(item.SeriesInstanceUID))
                     {
@@ -120,24 +119,26 @@ namespace DataMiningGUI
                     // Export Structure Set, Plan, and Dose by finding related series
                     if (options.ExportStructure || options.ExportPlan || options.ExportDose)
                     {
+                        List<DicomDataset> rtStructSeries = allSeries.Where(s => GetStringValue(s, DicomTag.Modality) == "RTSTRUCT").ToList();
                         // Find RT Structure Set series
-                        List<DicomDataset> rtStructSeries = allSeries.Where(s =>
-                            GetStringValue(s, DicomTag.Modality) == "RTSTRUCT" &&
-                            GetStringValue(s, DicomTag.SeriesDescription) == "ARIA RadOnc Structure Sets").ToList();
+
 
                         if (options.ExportStructure && rtStructSeries.Any())
                         {
-                            foreach (DicomDataset series in rtStructSeries)
+                            if (item.ExamData.StructureSetUID != null)
                             {
-                                await ExportSeriesAsync(series, options, structureFolder,
-                                    "Structure", progress, cancellationToken);
+                                foreach (DicomDataset series in rtStructSeries)
+                                {
+                                    List<DicomDataset> allImagesRT = await FindInstancesForSeriesAsync(new List<DicomDataset> { series }, options, cancellationToken);
+                                    if (allImagesRT.Where(s => GetStringValue(s, DicomTag.SOPInstanceUID) == item.ExamData.StructureSetUID).ToList().Any())
+                                        await ExportSeriesAsync(series, options, structureFolder,
+                                            "Structure", progress, cancellationToken);
+                                }
                             }
                         }
 
                         // Find RT Plan series
-                        List<DicomDataset> rtPlanSeries = allSeries.Where(s =>
-                            GetStringValue(s, DicomTag.Modality) == "RTPLAN" &&
-                            item.AssociatedPlans.Select(p => p.PlanName).Contains(GetStringValue(s, DicomTag.SeriesDescription))).ToList();
+                        List<DicomDataset> rtPlanSeries = allSeries.Where(s => GetStringValue(s, DicomTag.Modality) == "RTPLAN" && item.AssociatedPlans.Select(p => p.SeriesInstanceUID).Contains(GetStringValue(s, DicomTag.SeriesInstanceUID))).ToList();
 
                         if (options.ExportPlan && rtPlanSeries.Any())
                         {
@@ -149,8 +150,9 @@ namespace DataMiningGUI
                         }
 
                         // Find RT Dose series
-                        List<DicomDataset> rtDoseSeries = allSeries.Where(s =>
-                            GetStringValue(s, DicomTag.Modality) == "RTDOSE").ToList();
+                        List<DicomDataset> rtDoseSeries = allSeries.Where(s => GetStringValue(s, DicomTag.Modality) == "RTDOSE" && item.AssociatedPlans.Select(p => p.DoseSeriesInstanceUID).Contains(GetStringValue(s, DicomTag.SeriesInstanceUID))).ToList();
+                        //rtDoseSeries = new List<DicomDataset> { rtDoseSeries[5] };
+                        //DicomDataset myDose = rtDoseSeries[5];
                         HashSet<string> seriesUIDs = new HashSet<string>();
 
                         if (options.ExportDose && rtDoseSeries.Any())
