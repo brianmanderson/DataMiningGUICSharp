@@ -24,6 +24,9 @@ namespace DataMiningGUI
         [Description("MRN")]
         MRN,
 
+        [Description("Diagnosis Code")]
+        DiagnosisCode,
+
         [Description("Patient Name")]
         PatientName,
 
@@ -545,6 +548,9 @@ namespace DataMiningGUI
 
                 case FilterField.PlanName:
                     return context.Plan?.PlanName ?? string.Empty;
+
+                case FilterField.DiagnosisCode:
+                    return string.Join(",", context.Course?.DiagnosisCodes) ?? string.Empty;
 
                 case FilterField.PlanType:
                     return context.Plan?.PlanType ?? string.Empty;

@@ -150,16 +150,18 @@ namespace DataMiningGUI
                         }
 
                         // Find RT Dose series
-                        List<DicomDataset> rtDoseSeries = allSeries.Where(s => GetStringValue(s, DicomTag.Modality) == "RTDOSE" && item.AssociatedPlans.Select(p => p.DoseSeriesInstanceUID).Contains(GetStringValue(s, DicomTag.SeriesInstanceUID))).ToList();
+                        List<DicomDataset> rtDoseSeries = allSeries.Where(s => GetStringValue(s, DicomTag.Modality) == "RTDOSE").ToList();
                         //rtDoseSeries = new List<DicomDataset> { rtDoseSeries[5] };
                         //DicomDataset myDose = rtDoseSeries[5];
                         HashSet<string> seriesUIDs = new HashSet<string>();
 
                         if (options.ExportDose && rtDoseSeries.Any())
                         {
-                            foreach (DicomDataset series in rtDoseSeries)
+                            List<DicomDataset> allImagesDose = await FindInstancesForSeriesAsync(rtDoseSeries, options, cancellationToken);
+                            allImagesDose = allImagesDose.Where(aid => item.AssociatedPlans.Select(p => p.DoseSOPInstanceUID).Contains(GetStringValue(aid, DicomTag.SOPInstanceUID))).ToList();
+                            foreach (DicomDataset series in allImagesDose)
                             {
-                                string seriesUID = GetStringValue(series, DicomTag.SeriesInstanceUID);
+                                string seriesUID = GetStringValue(series, DicomTag.SOPInstanceUID);
                                 if (!string.IsNullOrEmpty(seriesUID) && !seriesUIDs.Contains(seriesUID))
                                 {
                                     seriesUIDs.Add(seriesUID);
