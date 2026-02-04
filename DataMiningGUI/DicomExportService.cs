@@ -403,6 +403,11 @@ namespace DataMiningGUI
                 primaryFrameOfRef = item.ExamData.EquipmentInfo.FrameOfReference;
             }
 
+            if (string.IsNullOrEmpty(primaryFrameOfRef))
+            {
+                return; // Can't proceed without primary frame of reference
+            }
+
             // Build list of allowed modalities
             List<string> allowedModalities = new List<string>();
             if (options.ExportRegistrationsCT) allowedModalities.Add("CT");
@@ -412,129 +417,149 @@ namespace DataMiningGUI
 
             bool includeCBCT = options.ExportRegistrationsCBCT;
 
-            // Build lookup of FrameOfReference -> ExaminationClass from AssociatedExams
+            // Step 1: Build lookup of FrameOfReference -> ExaminationClass (need this first for filtering)
             Dictionary<string, List<ExaminationClass>> frameOfRefToExams = new Dictionary<string, List<ExaminationClass>>();
             if (item.AssociatedExams != null)
             {
                 foreach (ExaminationClass exam in item.AssociatedExams)
                 {
+                    string examFrameOfRef = GetExamFrameOfReference(exam);
+                    if (string.IsNullOrEmpty(examFrameOfRef))
+                    {
+                        continue;
+                    }
+
                     string sourceModality = GetExamModality(exam);
                     if (!IsModalityAllowed(sourceModality, allowedModalities))
                     {
                         continue;
                     }
-                    if (!includeCBCT)
+
+                    if (!includeCBCT && exam.ExamName.ToLower().Contains("cbct"))
                     {
-                        if (exam.ExamName.ToLower().Contains("cbct"))
-                        {
-                            continue;
-                        }
+                        continue;
                     }
-                    string examFrameOfRef = GetExamFrameOfReference(exam);
-                    if (!string.IsNullOrEmpty(examFrameOfRef))
+
+                    if (!frameOfRefToExams.ContainsKey(examFrameOfRef))
                     {
-                        if (!frameOfRefToExams.ContainsKey(examFrameOfRef))
-                        {
-                            frameOfRefToExams[examFrameOfRef] = new List<ExaminationClass>();
-                        }
-                        frameOfRefToExams[examFrameOfRef].Add(exam);
+                        frameOfRefToExams[examFrameOfRef] = new List<ExaminationClass>();
                     }
+                    frameOfRefToExams[examFrameOfRef].Add(exam);
                 }
             }
 
-
-
-            // Filter registrations: only those with ToFrameOfReference matching primary exam
+            // Step 2: Filter registrations - must register TO primary AND have valid source exam with allowed modality
             List<RegistrationExportInfo> filteredRegistrations = new List<RegistrationExportInfo>();
-            if (item.AssociatedRegistrations != null && !string.IsNullOrEmpty(primaryFrameOfRef))
+            HashSet<string> validRegistrationUIDs = new HashSet<string>();
+
+            if (item.AssociatedRegistrations != null)
             {
                 foreach (RegistrationExportInfo regInfo in item.AssociatedRegistrations)
                 {
+                    // Must register TO the primary frame of reference
                     if (regInfo.ToFrameOfReference != primaryFrameOfRef)
                     {
                         continue;
                     }
 
-                    if (!includeCBCT)
+                    if (string.IsNullOrEmpty(regInfo.FromFrameOfReference))
                     {
-                        if (string.IsNullOrEmpty(regInfo.FromFrameOfReference) ||
-                            !frameOfRefToExams.ContainsKey(regInfo.FromFrameOfReference))
-                        {
-                            continue;
-                        }
+                        continue;
+                    }
+
+                    // Must have at least one exam with allowed modality at the FromFrameOfReference
+                    if (!frameOfRefToExams.ContainsKey(regInfo.FromFrameOfReference))
+                    {
+                        continue;
                     }
 
                     filteredRegistrations.Add(regInfo);
+
+                    if (!string.IsNullOrEmpty(regInfo.RegistrationUID))
+                    {
+                        validRegistrationUIDs.Add(regInfo.RegistrationUID);
+                    }
                 }
             }
 
-            // Export the registration object itself
+            // Step 3: Get all registration series and filter by valid RegistrationUIDs
             List<DicomDataset> regSeries = allSeries.Where(s =>
             {
                 string modality = GetStringValue(s, DicomTag.Modality);
                 return modality == "REG" || modality == "SPATIAL REGISTRATION";
             }).ToList();
 
-            if (!includeCBCT)
+            if (regSeries.Any() && validRegistrationUIDs.Any())
             {
+                // Query instance-level to get SOPInstanceUIDs
+                List<DicomDataset> allRegistrationInstances = await FindInstancesForSeriesAsync(regSeries, options, cancellationToken);
+
+                // Find series that contain valid registration instances
+                HashSet<string> validSeriesUIDs = new HashSet<string>();
+                foreach (DicomDataset instance in allRegistrationInstances)
+                {
+                    string sopInstanceUID = GetStringValue(instance, DicomTag.SOPInstanceUID);
+                    if (validRegistrationUIDs.Contains(sopInstanceUID))
+                    {
+                        string seriesUID = GetStringValue(instance, DicomTag.SeriesInstanceUID);
+                        if (!string.IsNullOrEmpty(seriesUID))
+                        {
+                            validSeriesUIDs.Add(seriesUID);
+                        }
+                    }
+                }
+
+                // Filter regSeries to only those containing valid registrations
                 regSeries = regSeries.Where(s =>
-                    GetStringValue(s, DicomTag.SeriesDescription) == "Image Registration").ToList();
+                    validSeriesUIDs.Contains(GetStringValue(s, DicomTag.SeriesInstanceUID))).ToList();
+            }
+            else
+            {
+                regSeries.Clear();
             }
 
+            // Step 4: Export the filtered registration DICOM objects
             foreach (DicomDataset series in regSeries)
             {
                 await ExportSeriesAsync(series, options, registrationFolder,
                     "Registrations", progress, cancellationToken);
             }
 
-            // Export filtered registrations source images
+            // Step 5: Export source images for filtered registrations
             HashSet<string> exportedSeriesUIDs = new HashSet<string>();
             foreach (RegistrationExportInfo regInfo in filteredRegistrations)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                string sourceExamName = !string.IsNullOrEmpty(regInfo.SourceExamName)
-                    ? regInfo.SourceExamName
-                    : "UnknownSource";
-                string sourceImageFolder = Path.Combine(baseExportPath, "RegisteredImages", SanitizeFolderName(sourceExamName));
-                EnsureDirectoryExists(sourceImageFolder);
+                List<ExaminationClass> sourceExams = frameOfRefToExams[regInfo.FromFrameOfReference];
 
-                if (progress != null)
+                foreach (ExaminationClass sourceExam in sourceExams)
                 {
-                    progress.Report(new DicomExportProgress
+                    string seriesUID = sourceExam.SeriesInstanceUID;
+                    if (string.IsNullOrEmpty(seriesUID) || exportedSeriesUIDs.Contains(seriesUID))
                     {
-                        PercentComplete = -1,
-                        StatusMessage = string.Format("Exporting Registration: {0}", regInfo.RegistrationName),
-                        DetailMessage = string.Format("Source: {0}", sourceExamName)
-                    });
-                }
-
-                if (!string.IsNullOrEmpty(regInfo.FromFrameOfReference) &&
-                    frameOfRefToExams.ContainsKey(regInfo.FromFrameOfReference))
-                {
-                    List<ExaminationClass> sourceExams = frameOfRefToExams[regInfo.FromFrameOfReference];
-
-                    foreach (ExaminationClass sourceExam in sourceExams)
-                    {
-                        string sourceModality = GetExamModality(sourceExam);
-
-                        if (IsModalityAllowed(sourceModality, allowedModalities))
-                        {
-                            string seriesUID = sourceExam.SeriesInstanceUID;
-                            if (!string.IsNullOrEmpty(seriesUID) && !exportedSeriesUIDs.Contains(seriesUID))
-                            {
-                                string examName = !string.IsNullOrEmpty(sourceExam.ExamName)
-                                    ? sourceExam.ExamName
-                                    : sourceExamName;
-                                string examFolder = Path.Combine(baseExportPath, "RegisteredImages", SanitizeFolderName(examName));
-                                EnsureDirectoryExists(examFolder);
-
-                                await ExportSeriesByUIDAsync(allSeries, seriesUID, options, examFolder,
-                                    string.Format("Source Image ({0})", examName), progress, cancellationToken);
-                                exportedSeriesUIDs.Add(seriesUID);
-                            }
-                        }
+                        continue;
                     }
+
+                    string examName = !string.IsNullOrEmpty(sourceExam.ExamName)
+                        ? sourceExam.ExamName
+                        : "UnknownSource";
+                    string examFolder = Path.Combine(baseExportPath, "RegisteredImages", SanitizeFolderName(examName));
+                    EnsureDirectoryExists(examFolder);
+
+                    if (progress != null)
+                    {
+                        progress.Report(new DicomExportProgress
+                        {
+                            PercentComplete = -1,
+                            StatusMessage = string.Format("Exporting Registration: {0}", regInfo.RegistrationName),
+                            DetailMessage = string.Format("Source: {0}", examName)
+                        });
+                    }
+
+                    await ExportSeriesByUIDAsync(allSeries, seriesUID, options, examFolder,
+                        string.Format("Source Image ({0})", examName), progress, cancellationToken);
+                    exportedSeriesUIDs.Add(seriesUID);
                 }
             }
         }
