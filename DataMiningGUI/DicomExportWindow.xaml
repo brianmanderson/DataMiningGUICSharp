@@ -236,10 +236,10 @@
             
             <Button Grid.Column="2" x:Name="CancelButton" Content="Cancel" 
                     Style="{StaticResource ButtonStyle}" Click="CancelButton_Click"
-                    Width="100" Margin="0,0,8,0"/>
+                    Width="150" Margin="0,0,8,0"/>
             <Button Grid.Column="3" x:Name="ExportButton" Content="Export" 
                     Style="{StaticResource ButtonStyle}" Click="ExportButton_Click"
-                    Width="120" Background="#1976D2" Foreground="White"/>
+                    Width="150" Background="#1976D2" Foreground="White"/>
         </Grid>
     </Grid>
 </Window>

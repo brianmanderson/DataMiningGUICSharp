@@ -101,6 +101,7 @@ namespace DataMiningGUI
 
                         _folderCheckBoxes[folderName] = checkBox;
                         FolderCheckBoxPanel.Items.Add(checkBox);
+                        break;
                     }
                 }
 

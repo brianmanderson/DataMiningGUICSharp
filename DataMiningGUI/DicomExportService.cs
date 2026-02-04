@@ -349,14 +349,13 @@ namespace DataMiningGUI
                 {
                     progress.Report(new DicomExportProgress
                     {
-                        PercentComplete = -1, // Indeterminate
+                        PercentComplete = -1,
                         StatusMessage = string.Format("Exporting {0}", dataType),
                         DetailMessage = string.Format("Series: {0}...", seriesUidDisplay)
                     });
                 }
 
-                _currentExportPath = exportPath;
-                _staticExportPath = exportPath;
+                DicomCStoreReceiverService.ExportPath = exportPath;
 
                 // Create C-MOVE request
                 DicomCMoveRequest moveRequest = new DicomCMoveRequest(
@@ -404,12 +403,33 @@ namespace DataMiningGUI
                 primaryFrameOfRef = item.ExamData.EquipmentInfo.FrameOfReference;
             }
 
+            // Build list of allowed modalities
+            List<string> allowedModalities = new List<string>();
+            if (options.ExportRegistrationsCT) allowedModalities.Add("CT");
+            if (options.ExportRegistrationsMR) allowedModalities.Add("MR");
+            if (options.ExportRegistrationsPET) { allowedModalities.Add("PT"); allowedModalities.Add("PET"); }
+            if (options.ExportRegistrationsCBCT) allowedModalities.Add("CBCT");
+
+            bool includeCBCT = options.ExportRegistrationsCBCT;
+
             // Build lookup of FrameOfReference -> ExaminationClass from AssociatedExams
             Dictionary<string, List<ExaminationClass>> frameOfRefToExams = new Dictionary<string, List<ExaminationClass>>();
             if (item.AssociatedExams != null)
             {
                 foreach (ExaminationClass exam in item.AssociatedExams)
                 {
+                    string sourceModality = GetExamModality(exam);
+                    if (!IsModalityAllowed(sourceModality, allowedModalities))
+                    {
+                        continue;
+                    }
+                    if (!includeCBCT)
+                    {
+                        if (exam.ExamName.ToLower().Contains("cbct"))
+                        {
+                            continue;
+                        }
+                    }
                     string examFrameOfRef = GetExamFrameOfReference(exam);
                     if (!string.IsNullOrEmpty(examFrameOfRef))
                     {
@@ -422,14 +442,7 @@ namespace DataMiningGUI
                 }
             }
 
-            // Build list of allowed modalities
-            List<string> allowedModalities = new List<string>();
-            if (options.ExportRegistrationsCT) allowedModalities.Add("CT");
-            if (options.ExportRegistrationsMR) allowedModalities.Add("MR");
-            if (options.ExportRegistrationsPET) { allowedModalities.Add("PT"); allowedModalities.Add("PET"); }
-            if (options.ExportRegistrationsCBCT) allowedModalities.Add("CBCT");
 
-            bool includeCBCT = options.ExportRegistrationsCBCT;
 
             // Filter registrations: only those with ToFrameOfReference matching primary exam
             List<RegistrationExportInfo> filteredRegistrations = new List<RegistrationExportInfo>();
@@ -471,7 +484,7 @@ namespace DataMiningGUI
             foreach (DicomDataset series in regSeries)
             {
                 await ExportSeriesAsync(series, options, registrationFolder,
-                    "Registration", progress, cancellationToken);
+                    "Registrations", progress, cancellationToken);
             }
 
             // Export filtered registrations source images
@@ -521,41 +534,6 @@ namespace DataMiningGUI
                                 exportedSeriesUIDs.Add(seriesUID);
                             }
                         }
-                    }
-                }
-            }
-
-            // If CBCT is selected, also export any CT series from DICOM query that weren't already exported
-            if (includeCBCT && options.ExportRegistrationsCT)
-            {
-                string cbctFolder = Path.Combine(baseExportPath, "RegisteredImages", "CBCT");
-                EnsureDirectoryExists(cbctFolder);
-
-                List<DicomDataset> ctSeries = allSeries.Where(s =>
-                    string.Equals(GetStringValue(s, DicomTag.Modality), "CT", StringComparison.OrdinalIgnoreCase) &&
-                    GetStringValue(s, DicomTag.SeriesInstanceUID) != item.SeriesInstanceUID).ToList();
-
-                foreach (DicomDataset series in ctSeries)
-                {
-                    string seriesUID = GetStringValue(series, DicomTag.SeriesInstanceUID);
-                    if (!string.IsNullOrEmpty(seriesUID) && !exportedSeriesUIDs.Contains(seriesUID))
-                    {
-                        if (progress != null)
-                        {
-                            progress.Report(new DicomExportProgress
-                            {
-                                PercentComplete = -1,
-                                StatusMessage = "Exporting CBCT/CT series",
-                                DetailMessage = string.Format("Series: {0}",
-                                    seriesUID.Length > 30
-                                        ? seriesUID.Substring(0, 30) + "..."
-                                        : seriesUID)
-                            });
-                        }
-
-                        await ExportSeriesAsync(series, options, cbctFolder,
-                            "CBCT Source", progress, cancellationToken);
-                        exportedSeriesUIDs.Add(seriesUID);
                     }
                 }
             }
@@ -782,7 +760,7 @@ namespace DataMiningGUI
                     return "Dose";
                 case "REG":
                 case "SPATIAL REGISTRATION":
-                    return "Registration";
+                    return "Registrations";
                 case "CT":
                 case "MR":
                 case "PT":
