@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -127,11 +128,11 @@ namespace DataMiningGUI
                         {
                             if (item.ExamData.StructureSetUID != null)
                             {
-                                foreach (DicomDataset series in rtStructSeries)
+                                List<DicomDataset> allImagesRT = await FindInstancesForSeriesAsync(rtStructSeries, options, cancellationToken);
+                                allImagesRT = allImagesRT.Where(s => GetStringValue(s, DicomTag.SOPInstanceUID) == item.ExamData.StructureSetUID).ToList();
+                                foreach (DicomDataset series in allImagesRT)
                                 {
-                                    List<DicomDataset> allImagesRT = await FindInstancesForSeriesAsync(new List<DicomDataset> { series }, options, cancellationToken);
-                                    if (allImagesRT.Where(s => GetStringValue(s, DicomTag.SOPInstanceUID) == item.ExamData.StructureSetUID).ToList().Any())
-                                        await ExportSeriesAsync(series, options, structureFolder,
+                                    await ExportSeriesAsync(series, options, structureFolder,
                                             "Structure", progress, cancellationToken);
                                 }
                             }
@@ -165,7 +166,7 @@ namespace DataMiningGUI
                                 if (!string.IsNullOrEmpty(seriesUID) && !seriesUIDs.Contains(seriesUID))
                                 {
                                     seriesUIDs.Add(seriesUID);
-                                    await ExportSeriesAsync(series, options, doseFolder,
+                                    await ExportSeriesImageAsync(series, options, doseFolder,
                                         "Dose", progress, cancellationToken);
                                 }
                             }
@@ -319,6 +320,71 @@ namespace DataMiningGUI
             foreach (DicomDataset series in matchingSeries)
             {
                 await ExportSeriesAsync(series, options, exportPath, dataType, progress, cancellationToken);
+            }
+        }
+
+        /// <summary>
+        /// Export a single series image using C-MOVE
+        /// </summary>
+        private async Task ExportSeriesImageAsync(
+            DicomDataset series,
+            DicomExportOptions options,
+            string exportPath,
+            string dataType,
+            IProgress<DicomExportProgress> progress,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                string seriesInstanceUID = GetStringValue(series, DicomTag.SeriesInstanceUID);
+                string studyInstanceUID = GetStringValue(series, DicomTag.StudyInstanceUID);
+                string sopInstanceUID = GetStringValue(series, DicomTag.SOPInstanceUID);
+                string seriesUidDisplay = "Unknown";
+                if (!string.IsNullOrEmpty(seriesInstanceUID))
+                {
+                    int displayLength = Math.Min(30, seriesInstanceUID.Length);
+                    seriesUidDisplay = seriesInstanceUID.Substring(0, displayLength);
+                }
+
+                if (progress != null)
+                {
+                    progress.Report(new DicomExportProgress
+                    {
+                        PercentComplete = -1,
+                        StatusMessage = string.Format("Exporting {0}", dataType),
+                        DetailMessage = string.Format("Series: {0}...", seriesUidDisplay)
+                    });
+                }
+
+                DicomCStoreReceiverService.ExportPath = exportPath;
+
+                // Create C-MOVE request
+                DicomCMoveRequest moveRequest = new DicomCMoveRequest(
+                    options.LocalAETitle,
+                    studyInstanceUID,
+                    seriesInstanceUID,
+                    sopInstanceUID);
+
+                moveRequest.OnResponseReceived += (req, response) =>
+                {
+                    if (response.Status != DicomStatus.Pending && response.Status != DicomStatus.Success)
+                    {
+                        Console.WriteLine(string.Format("C-MOVE response status: {0}", response.Status));
+                    }
+                };
+
+                IDicomClient client = CreateDicomClient(options);
+                await client.AddRequestAsync(moveRequest);
+                await client.SendAsync(cancellationToken);
+
+                // Small delay to allow file reception
+                await Task.Delay(500, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(string.Format("Error exporting series: {0}", ex.Message));
             }
         }
 

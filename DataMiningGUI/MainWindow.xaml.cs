@@ -1,3 +1,7 @@
+using DataBaseStructure;
+using DataBaseStructure.AriaBase;
+using FellowOakDicom;
+using FellowOakDicom.Network;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -9,19 +13,17 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using DataBaseStructure;
-using DataBaseStructure.AriaBase;
 
 namespace DataMiningGUI
 {
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
-    public partial class MainWindow : Window
+        public partial class MainWindow : Window
     {
         #region Fields
 
-        private readonly string _databasePath = @"\\ad.ucsd.edu\ahs\CANC\RADONC\BMAnderson\DataBases"; //@"C:\Users\BRA008\Modular_Projects\LocalDatabases";
+        private readonly string _databasePath = @"\\ad.ucsd.edu\ahs\CANC\RADONC\BMAnderson\DataBases"; //@"C:\Users\BRA008\Modular_Projects\LocalDatabases"; //
         private const int MaxDisplayCount = 50;
 
         private List<PatientClass> _allPatients = new List<PatientClass>();
@@ -73,6 +75,10 @@ namespace DataMiningGUI
                 foreach (var directory in directories.OrderByDescending(d => d))
                 {
                     var folderName = Path.GetFileName(directory);
+                    if (folderName != "2027")
+                    {
+                        continue;
+                    }
                     var jsonFiles = new List<string>();
 
                     // Check if this directory contains any JSON files (including subdirectories)
