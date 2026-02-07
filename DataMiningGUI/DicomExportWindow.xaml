@@ -168,7 +168,13 @@
                                   Style="{StaticResource CheckBoxStyle}" IsChecked="False"/>
                     </StackPanel>
 
-                    <Separator Margin="0,16"/>
+                    <Separator Margin="0,12"/>
+
+                    <CheckBox x:Name="AnonymizeCheckBox" Content="Anonymize?"
+                              Style="{StaticResource CheckBoxStyle}" IsChecked="False"
+                              ToolTip="Anonymize patient demographics before saving. UIDs (FrameOfReference, Study, Series, SOP) are preserved."/>
+
+                    <Separator Margin="0,12"/>
                     
                     <TextBlock Text="DICOM Connection" Style="{StaticResource SectionHeader}"/>
                     

@@ -243,6 +243,7 @@ namespace DataMiningGUI
         public bool ExportRegistrationsMR { get; set; }
         public bool ExportRegistrationsPET { get; set; }
         public bool ExportRegistrationsCBCT { get; set; }
+        public bool Anonymize { get; set; }
 
         public DicomExportOptions()
         {
@@ -254,6 +255,7 @@ namespace DataMiningGUI
             ExportStructure = true;
             ExportPlan = true;
             ExportDose = true;
+            Anonymize = false;
             ExportRegistrations = false;
             ExportRegistrationsCT = true;
             ExportRegistrationsMR = true;

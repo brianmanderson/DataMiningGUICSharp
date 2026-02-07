@@ -1,4 +1,4 @@
-using DataBaseStructure.AriaBase;
+﻿using DataBaseStructure.AriaBase;
 using FellowOakDicom;
 using FellowOakDicom.Network;
 using FellowOakDicom.Network.Client;
@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -76,7 +77,9 @@ namespace DataMiningGUI
                     }
 
                     // Create export directory structure: MRN/Case/Examination
-                    string patientFolder = SanitizeFolderName(item.MRN);
+                    string patientFolder = options.Anonymize
+                        ? DicomCStoreReceiverService.DeterministicHashString("PatientID:" + item.MRN)
+                        : SanitizeFolderName(item.MRN);
                     string courseFolder = SanitizeFolderName(item.CourseName);
                     string examFolder = SanitizeFolderName(item.ExamName);
                     _currentExportPath = Path.Combine(options.ExportFolder, patientFolder, courseFolder, examFolder);
@@ -639,6 +642,7 @@ namespace DataMiningGUI
         {
             // Configure the SCP provider options
             DicomCStoreReceiverService.ExportPath = options.ExportFolder;
+            DicomCStoreReceiverService.ShouldAnonymize = options.Anonymize;
 
             _localSCP = DicomServerFactory.Create<DicomCStoreReceiverService>(options.LocalPort);
 
@@ -757,11 +761,30 @@ namespace DataMiningGUI
     {
         private static readonly object _lock = new object();
         private static string _exportPath;
+        private static bool _shouldAnonymize;
+
+        /// <summary>
+        /// Salt used for deterministic hashing. Change this value to produce
+        /// a completely different set of anonymous IDs for the same input data.
+        /// </summary>
+        private static string _hashSalt = "DicomExportAnon";
 
         public static string ExportPath
         {
             get { lock (_lock) { return _exportPath; } }
             set { lock (_lock) { _exportPath = value; } }
+        }
+
+        public static bool ShouldAnonymize
+        {
+            get { lock (_lock) { return _shouldAnonymize; } }
+            set { lock (_lock) { _shouldAnonymize = value; } }
+        }
+
+        public static string HashSalt
+        {
+            get { lock (_lock) { return _hashSalt; } }
+            set { lock (_lock) { _hashSalt = value; } }
         }
 
         public DicomCStoreReceiverService(INetworkStream stream, Encoding fallbackEncoding, ILogger log, DicomServiceDependencies dependencies)
@@ -800,6 +823,12 @@ namespace DataMiningGUI
         {
             try
             {
+                // Anonymize before saving — the un-anonymized data never touches disk
+                if (ShouldAnonymize)
+                {
+                    AnonymizeDataset(request.Dataset);
+                }
+
                 string modality = request.Dataset.GetSingleValueOrDefault<string>(DicomTag.Modality, "Unknown");
                 string subFolder = GetSubfolderForModality(modality);
                 string targetPath = ExportPath;
@@ -827,6 +856,83 @@ namespace DataMiningGUI
             {
                 Console.WriteLine(string.Format("Error writing DICOM file: {0}", ex.Message));
                 return Task.FromResult(new DicomCStoreResponse(request, DicomStatus.ProcessingFailure));
+            }
+        }
+
+        /// <summary>
+        /// Anonymize a DICOM dataset by removing/replacing patient demographics
+        /// while preserving all UIDs needed for spatial and relational integrity.
+        /// Uses a deterministic SHA-256 hash so the same original value always
+        /// produces the same anonymous replacement across exports and sessions.
+        /// </summary>
+        private static void AnonymizeDataset(DicomDataset dataset)
+        {
+            // --- Deterministic replacements (same input → same output every time) ---
+            ReplaceIfPresent(dataset, DicomTag.PatientID, DeterministicHash("PatientID", dataset, DicomTag.PatientID));
+            ReplaceIfPresent(dataset, DicomTag.PatientName, DeterministicHash("PatientName", dataset, DicomTag.PatientID)); // keyed on ID so name stays consistent with ID
+            ReplaceIfPresent(dataset, DicomTag.AccessionNumber, DeterministicHash("AccessionNumber", dataset, DicomTag.AccessionNumber));
+            ReplaceIfPresent(dataset, DicomTag.InstitutionName, DeterministicHash("InstitutionName", dataset, DicomTag.InstitutionName));
+            ReplaceIfPresent(dataset, DicomTag.InstitutionAddress, "");
+            ReplaceIfPresent(dataset, DicomTag.ReferringPhysicianName, "ANON");
+            ReplaceIfPresent(dataset, DicomTag.PhysiciansOfRecord, "ANON");
+            ReplaceIfPresent(dataset, DicomTag.PerformingPhysicianName, "ANON");
+            ReplaceIfPresent(dataset, DicomTag.OperatorsName, "ANON");
+
+            // --- Blanked fields ---
+            ReplaceIfPresent(dataset, DicomTag.PatientBirthDate, "");
+            ReplaceIfPresent(dataset, DicomTag.PatientBirthTime, "");
+            ReplaceIfPresent(dataset, DicomTag.PatientAddress, "");
+            ReplaceIfPresent(dataset, DicomTag.PatientTelephoneNumbers, "");
+            ReplaceIfPresent(dataset, DicomTag.PatientComments, "");
+            ReplaceIfPresent(dataset, DicomTag.AdditionalPatientHistory, "");
+
+            // NOTE: The following UIDs are intentionally PRESERVED to maintain
+            // spatial registration and relational integrity across exported files:
+            //   - FrameOfReferenceUID
+            //   - StudyInstanceUID
+            //   - SeriesInstanceUID
+            //   - SOPInstanceUID
+            //   - ReferencedSOPInstanceUID (inside sequences)
+            //   - ReferencedFrameOfReferenceUID (inside sequences)
+        }
+
+        /// <summary>
+        /// Produce a deterministic 8-character hex string from (purpose + original value + salt).
+        /// The same original DICOM value will always hash to the same result regardless of
+        /// when or where the export is run, as long as the salt is unchanged.
+        /// </summary>
+        private static string DeterministicHash(string purpose, DicomDataset dataset, DicomTag sourceTag)
+        {
+            string original = dataset.GetSingleValueOrDefault<string>(sourceTag, "");
+            if (string.IsNullOrEmpty(original))
+            {
+                return "ANON";
+            }
+
+            return DeterministicHashString(string.Format("{0}:{1}", purpose, original));
+        }
+        /// <summary>
+        /// Public deterministic hash usable outside the SCP (e.g. for folder naming).
+        /// Same input + same salt → same output every time.
+        /// </summary>
+        public static string DeterministicHashString(string inputString)
+        {
+            string salted = string.Format("{0}:{1}", inputString, HashSalt);
+            using (SHA256 sha = SHA256.Create())
+            {
+                byte[] hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(salted));
+                return "A" + BitConverter.ToString(hashBytes, 0, 4).Replace("-", "");
+            }
+        }
+
+        /// <summary>
+        /// Replace a tag value only if it already exists in the dataset
+        /// </summary>
+        private static void ReplaceIfPresent(DicomDataset dataset, DicomTag tag, string value)
+        {
+            if (dataset.Contains(tag))
+            {
+                dataset.AddOrUpdate(tag, value ?? "");
             }
         }
 

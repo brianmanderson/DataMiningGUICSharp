@@ -152,7 +152,7 @@ namespace DataMiningGUI
                                     string examFrameOfRef = GetFrameOfReference(exam);
 
                                     // Find registrations where this exam is the target (ToFrameOfReference)
-                                    List<RegistrationExportInfo> associatedRegistrations = 
+                                    List<RegistrationExportInfo> associatedRegistrations =
                                         FindAssociatedRegistrations(patient, exam, examFrameOfRef, frameOfRefToExam);
 
                                     ExportExaminationItem exportExam = new ExportExaminationItem
@@ -608,6 +608,7 @@ namespace DataMiningGUI
                 ExportRegistrationsMR = ExportRegMRCheckBox.IsChecked.HasValue && ExportRegMRCheckBox.IsChecked.Value,
                 ExportRegistrationsPET = ExportRegPETCheckBox.IsChecked.HasValue && ExportRegPETCheckBox.IsChecked.Value,
                 ExportRegistrationsCBCT = ExportRegCBCTCheckBox.IsChecked.HasValue && ExportRegCBCTCheckBox.IsChecked.Value,
+                Anonymize = AnonymizeCheckBox.IsChecked.HasValue && AnonymizeCheckBox.IsChecked.Value,
                 RemoteAETitle = RemoteAETitleTextBox.Text.Trim(),
                 RemoteIP = RemoteIPTextBox.Text.Trim(),
                 RemotePort = remotePort,
