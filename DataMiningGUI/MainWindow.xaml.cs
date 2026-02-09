@@ -23,7 +23,7 @@ namespace DataMiningGUI
     {
         #region Fields
 
-        private readonly string _databasePath = @"\\ad.ucsd.edu\ahs\CANC\RADONC\BMAnderson\DataBases"; //@"C:\Users\BRA008\Modular_Projects\LocalDatabases"; //
+        private readonly string _databasePath = @"C:\Users\BRA008\Modular_Projects\LocalDatabases"; //@"\\ad.ucsd.edu\ahs\CANC\RADONC\BMAnderson\DataBases"; //
         private const int MaxDisplayCount = 50;
 
         private List<PatientClass> _allPatients = new List<PatientClass>();
@@ -77,7 +77,7 @@ namespace DataMiningGUI
                     var folderName = Path.GetFileName(directory);
                     if (folderName != "2027")
                     {
-                        continue;
+                        //continue;
                     }
                     var jsonFiles = new List<string>();
 
@@ -107,7 +107,7 @@ namespace DataMiningGUI
 
                         _folderCheckBoxes[folderName] = checkBox;
                         FolderCheckBoxPanel.Items.Add(checkBox);
-                        break;
+                        //break;
                     }
                 }
 

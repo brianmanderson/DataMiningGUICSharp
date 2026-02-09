@@ -64,7 +64,10 @@ namespace DataMiningGUI
         ReviewMonth,
 
         [Description("Contains ROI")]
-        ContainsROI
+        ContainsROI,
+
+        [Description("Contains Modality")]
+        ContainsModality
     }
 
     /// <summary>
@@ -589,6 +592,9 @@ namespace DataMiningGUI
                 case FilterField.ContainsROI:
                     return GetROINames(context);
 
+                case FilterField.ContainsModality:
+                    return GetModalities(context);
+
                 default:
                     return string.Empty;
             }
@@ -780,6 +786,43 @@ namespace DataMiningGUI
             }
 
             return string.Join(", ", techniques);
+        }
+
+        private static string GetModalities(FilterContext context)
+        {
+            HashSet<string> modalityNames = new HashSet<string>();
+            ExaminationClass planExam = context.Patient.Examinations?.FirstOrDefault(e => e.ExamName == context.Plan?.Referenced_Exam_Name);
+            string planExamFrameOfReference = planExam?.EquipmentInfo?.FrameOfReference;
+
+            if (string.IsNullOrEmpty(planExamFrameOfReference))
+                return string.Join(", ", modalityNames);
+
+            List<ExaminationClass> exams = context.Patient.Examinations ?? new List<ExaminationClass>();
+            List<RegistrationClass> registrations = context.Patient.Registrations ?? new List<RegistrationClass>();
+
+            // Collect all frames of reference that are linked to the plan exam's frame via registrations
+            HashSet<string> linkedFrames = new HashSet<string> { planExamFrameOfReference };
+            foreach (var reg in registrations)
+            {
+                if (reg.FromFrameOfReference == planExamFrameOfReference)
+                    linkedFrames.Add(reg.ToFrameOfReference);
+                else if (reg.ToFrameOfReference == planExamFrameOfReference)
+                    linkedFrames.Add(reg.FromFrameOfReference);
+            }
+
+            // Find all exams whose frame of reference is in the linked set
+            foreach (var exam in exams)
+            {
+                string examFoR = exam.EquipmentInfo?.FrameOfReference;
+                if (!string.IsNullOrEmpty(examFoR) && linkedFrames.Contains(examFoR))
+                {
+                    string modality = exam.EquipmentInfo?.Modality;
+                    if (!string.IsNullOrEmpty(modality))
+                        modalityNames.Add(modality);
+                }
+            }
+
+            return string.Join(", ", modalityNames);
         }
 
         private static string GetROINames(FilterContext context)
