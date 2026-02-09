@@ -3,6 +3,7 @@ using FellowOakDicom;
 using FellowOakDicom.Network;
 using FellowOakDicom.Network.Client;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -19,8 +20,64 @@ namespace DataMiningGUI
     /// <summary>
     /// Service for exporting DICOM data using FellowOakDicom (fo-dicom)
     /// </summary>
+    /// 
+    public class AnonymizationKey : BaseMethod
+    {
+        [JsonProperty("Mappings")]
+        public Dictionary<string, string> Mappings { get; set; } = new Dictionary<string, string>();
+
+    }
     public class DicomExportService
     {
+        private static readonly object _anonKeyLock = new object();
+        private void UpdateAnonymizationKey(string exportFolder, string originalMRN, string anonymizedMRN)
+        {
+            lock (_anonKeyLock)
+            {
+                string keyFilePath = Path.Combine(exportFolder, "AnonymizationKey.json");
+                AnonymizationKey anonKey;
+
+                // Load existing file or create new
+                if (File.Exists(keyFilePath))
+                {
+                    try
+                    {
+                        string json = File.ReadAllText(keyFilePath);
+                        anonKey = JsonConvert.DeserializeObject<AnonymizationKey>(json);
+                        if (anonKey == null)
+                        {
+                            anonKey = new AnonymizationKey {};
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error reading anonymization key file: {ex.Message}");
+                        anonKey = new AnonymizationKey {};
+                    }
+                }
+                else
+                {
+                    anonKey = new AnonymizationKey {};
+                }
+
+                // Add or update mapping
+                if (!anonKey.Mappings.ContainsKey(originalMRN))
+                {
+                    anonKey.Mappings[originalMRN] = anonymizedMRN;
+                }
+
+                // Save to file
+                try
+                {
+                    string outputJson = anonKey.ToJsonFormatted();
+                    File.WriteAllText(keyFilePath, outputJson);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error writing anonymization key file: {ex.Message}");
+                }
+            }
+        }
         private IDicomServer _localSCP;
         private string _currentExportPath;
         private ConcurrentQueue<string> _receivedFiles;
@@ -80,6 +137,12 @@ namespace DataMiningGUI
                     string patientFolder = options.Anonymize
                         ? DicomCStoreReceiverService.DeterministicHashString("PatientID:" + item.MRN)
                         : SanitizeFolderName(item.MRN);
+
+                    // Track anonymization mapping
+                    if (options.Anonymize)
+                    {
+                        UpdateAnonymizationKey(options.ExportFolder, item.MRN, patientFolder);
+                    }
                     string courseFolder = SanitizeFolderName(item.CourseName);
                     string examFolder = SanitizeFolderName(item.ExamName);
                     _currentExportPath = Path.Combine(options.ExportFolder, patientFolder, courseFolder, examFolder);

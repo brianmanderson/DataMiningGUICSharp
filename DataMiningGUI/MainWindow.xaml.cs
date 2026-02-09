@@ -23,7 +23,8 @@ namespace DataMiningGUI
     {
         #region Fields
 
-        private readonly string _databasePath = @"C:\Users\BRA008\Modular_Projects\LocalDatabases"; //@"\\ad.ucsd.edu\ahs\CANC\RADONC\BMAnderson\DataBases"; //
+        private string _databasePath = @"C:\Users\BRA008\Modular_Projects\LocalDatabases"; // //
+        private readonly string _backupDatabasePath = @"\\ad.ucsd.edu\ahs\CANC\RADONC\BMAnderson\DataBases";
         private const int MaxDisplayCount = 50;
 
         private List<PatientClass> _allPatients = new List<PatientClass>();
@@ -66,8 +67,8 @@ namespace DataMiningGUI
             {
                 if (!Directory.Exists(_databasePath))
                 {
-                    StatusText.Text = $"Database path not found: {_databasePath}";
-                    return;
+                    StatusText.Text = $"Database path not found: {_databasePath}, switching to {_backupDatabasePath}";
+                    _databasePath = _backupDatabasePath;
                 }
 
                 var directories = Directory.GetDirectories(_databasePath);
