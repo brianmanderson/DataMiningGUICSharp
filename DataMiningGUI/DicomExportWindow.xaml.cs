@@ -19,6 +19,7 @@ namespace DataMiningGUI
     public partial class DicomExportWindow : Window
     {
         private ObservableCollection<ExportPatientItem> _patients;
+        private string _customAnonymizationKeyPath = null;
         private CancellationTokenSource _cancellationTokenSource;
         private bool _isExporting = false;
 
@@ -533,7 +534,10 @@ namespace DataMiningGUI
                 }
             }
         }
-
+        private void AnonymizeCheckBox_CheckChanged(object sender, RoutedEventArgs e)
+        {
+            UpdateAnonymizationKeyDisplay();
+        }
         private void ExportRegistrationsCheckBox_CheckChanged(object sender, RoutedEventArgs e)
         {
             if (RegistrationModalityPanel != null)
@@ -609,6 +613,7 @@ namespace DataMiningGUI
                 ExportRegistrationsPET = ExportRegPETCheckBox.IsChecked.HasValue && ExportRegPETCheckBox.IsChecked.Value,
                 ExportRegistrationsCBCT = ExportRegCBCTCheckBox.IsChecked.HasValue && ExportRegCBCTCheckBox.IsChecked.Value,
                 Anonymize = AnonymizeCheckBox.IsChecked.HasValue && AnonymizeCheckBox.IsChecked.Value,
+                AnonymizationKeyPath = _customAnonymizationKeyPath,
                 RemoteAETitle = RemoteAETitleTextBox.Text.Trim(),
                 RemoteIP = RemoteIPTextBox.Text.Trim(),
                 RemotePort = remotePort,
@@ -734,5 +739,41 @@ namespace DataMiningGUI
         }
 
         #endregion
+
+        private void EditAnonymizationKeyButton_Click(object sender, RoutedEventArgs e)
+        {
+            string defaultFolder = ExportFolderTextBox.Text.Trim();
+            if (string.IsNullOrEmpty(defaultFolder))
+            {
+                defaultFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            }
+
+            var editorWindow = new AnonymizationKeyEditorWindow(defaultFolder);
+            editorWindow.Owner = this;
+
+            if (editorWindow.ShowDialog() == true)
+            {
+                // Capture the path chosen by the user
+                _customAnonymizationKeyPath = editorWindow.SelectedKeyFilePath;
+            }
+
+            UpdateAnonymizationKeyDisplay();
+        }
+
+        private void UpdateAnonymizationKeyDisplay()
+        {
+            if (AnonymizeCheckBox.IsChecked.HasValue && AnonymizeCheckBox.IsChecked.Value)
+            {
+                string keyPath = !string.IsNullOrEmpty(_customAnonymizationKeyPath)
+                    ? _customAnonymizationKeyPath
+                    : System.IO.Path.Combine(ExportFolderTextBox.Text.Trim(), "AnonymizationKey.json");
+                AnonymizationKeyLocationText.Text = keyPath;
+                AnonymizationKeyInfoPanel.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                AnonymizationKeyInfoPanel.Visibility = Visibility.Collapsed;
+            }
+        }
     }
 }

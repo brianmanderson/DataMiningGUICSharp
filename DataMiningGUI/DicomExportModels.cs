@@ -244,6 +244,7 @@ namespace DataMiningGUI
         public bool ExportRegistrationsPET { get; set; }
         public bool ExportRegistrationsCBCT { get; set; }
         public bool Anonymize { get; set; }
+        public string AnonymizationKeyPath { get; set; }
 
         public DicomExportOptions()
         {

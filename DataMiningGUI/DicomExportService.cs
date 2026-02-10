@@ -30,11 +30,10 @@ namespace DataMiningGUI
     public class DicomExportService
     {
         private static readonly object _anonKeyLock = new object();
-        private void UpdateAnonymizationKey(string exportFolder, string originalMRN, string anonymizedMRN)
+        private string GetOrCreateAnonymizedMRN(string keyFilePath, string originalMRN)
         {
             lock (_anonKeyLock)
             {
-                string keyFilePath = Path.Combine(exportFolder, "AnonymizationKey.json");
                 AnonymizationKey anonKey;
 
                 // Load existing file or create new
@@ -46,35 +45,44 @@ namespace DataMiningGUI
                         anonKey = JsonConvert.DeserializeObject<AnonymizationKey>(json);
                         if (anonKey == null)
                         {
-                            anonKey = new AnonymizationKey {};
+                            anonKey = new AnonymizationKey();
                         }
                     }
                     catch (Exception ex)
                     {
                         Console.WriteLine($"Error reading anonymization key file: {ex.Message}");
-                        anonKey = new AnonymizationKey {};
+                        anonKey = new AnonymizationKey();
                     }
                 }
                 else
                 {
-                    anonKey = new AnonymizationKey {};
+                    anonKey = new AnonymizationKey();
                 }
 
-                // Add or update mapping
-                if (!anonKey.Mappings.ContainsKey(originalMRN))
+                // Check if this MRN already has a mapping
+                if (anonKey.Mappings.ContainsKey(originalMRN))
                 {
+                    // Use existing mapping
+                    return anonKey.Mappings[originalMRN];
+                }
+                else
+                {
+                    // Create new hash
+                    string anonymizedMRN = DicomCStoreReceiverService.DeterministicHashString("PatientID:" + originalMRN);
                     anonKey.Mappings[originalMRN] = anonymizedMRN;
-                }
 
-                // Save to file
-                try
-                {
-                    string outputJson = anonKey.ToJsonFormatted();
-                    File.WriteAllText(keyFilePath, outputJson);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error writing anonymization key file: {ex.Message}");
+                    // Save to file
+                    try
+                    {
+                        string outputJson = anonKey.ToJsonFormatted();
+                        File.WriteAllText(keyFilePath, outputJson);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error writing anonymization key file: {ex.Message}");
+                    }
+
+                    return anonymizedMRN;
                 }
             }
         }
@@ -86,6 +94,9 @@ namespace DataMiningGUI
         // Static storage for the SCP to access current export path
         private static string _staticExportPath;
         private static ConcurrentQueue<string> _staticReceivedFiles;
+
+        private string _currentAnonymizationKeyPath;
+        private static string _staticAnonymizationKeyPath;
 
         /// <summary>
         /// Export selected items to the specified folder using DICOM C-MOVE
@@ -133,20 +144,21 @@ namespace DataMiningGUI
                         });
                     }
 
+                    _currentAnonymizationKeyPath = !string.IsNullOrEmpty(options.AnonymizationKeyPath)
+                        ? options.AnonymizationKeyPath
+                        : Path.Combine(options.ExportFolder, "AnonymizationKey.json");
+                    _staticAnonymizationKeyPath = _currentAnonymizationKeyPath;
+                    DicomCStoreReceiverService.AnonymizationKeyPath = _currentAnonymizationKeyPath;
                     // Create export directory structure: MRN/Case/Examination
                     string patientFolder = options.Anonymize
-                        ? DicomCStoreReceiverService.DeterministicHashString("PatientID:" + item.MRN)
+                        ? GetOrCreateAnonymizedMRN(_currentAnonymizationKeyPath, item.MRN)
                         : SanitizeFolderName(item.MRN);
 
-                    // Track anonymization mapping
-                    if (options.Anonymize)
-                    {
-                        UpdateAnonymizationKey(options.ExportFolder, item.MRN, patientFolder);
-                    }
                     string courseFolder = SanitizeFolderName(item.CourseName);
                     string examFolder = SanitizeFolderName(item.ExamName);
                     _currentExportPath = Path.Combine(options.ExportFolder, patientFolder, courseFolder, examFolder);
                     _staticExportPath = _currentExportPath;
+
 
                     // Create subdirectories for each data type
                     string structureFolder = _currentExportPath;
@@ -837,6 +849,13 @@ namespace DataMiningGUI
             get { lock (_lock) { return _exportPath; } }
             set { lock (_lock) { _exportPath = value; } }
         }
+        private static string _anonymizationKeyPath;
+
+        public static string AnonymizationKeyPath
+        {
+            get { lock (_lock) { return _anonymizationKeyPath; } }
+            set { lock (_lock) { _anonymizationKeyPath = value; } }
+        }
 
         public static bool ShouldAnonymize
         {
@@ -931,7 +950,9 @@ namespace DataMiningGUI
         private static void AnonymizeDataset(DicomDataset dataset)
         {
             // --- Deterministic replacements (same input → same output every time) ---
-            ReplaceIfPresent(dataset, DicomTag.PatientID, DeterministicHash("PatientID", dataset, DicomTag.PatientID));
+            string originalPatientID = dataset.GetSingleValueOrDefault(DicomTag.PatientID, "");
+            string anonymizedPatientID = GetAnonymizedPatientID(originalPatientID);
+            ReplaceIfPresent(dataset, DicomTag.PatientID, anonymizedPatientID);
             ReplaceIfPresent(dataset, DicomTag.PatientName, DeterministicHash("PatientName", dataset, DicomTag.PatientID)); // keyed on ID so name stays consistent with ID
             ReplaceIfPresent(dataset, DicomTag.AccessionNumber, DeterministicHash("AccessionNumber", dataset, DicomTag.AccessionNumber));
             ReplaceIfPresent(dataset, DicomTag.InstitutionName, DeterministicHash("InstitutionName", dataset, DicomTag.InstitutionName));
@@ -959,6 +980,39 @@ namespace DataMiningGUI
             //   - ReferencedFrameOfReferenceUID (inside sequences)
         }
 
+        /// <summary>
+        /// Gets the anonymized Patient ID from the AnonymizationKey mapping file.
+        /// Falls back to deterministic hash if no mapping exists or file cannot be read.
+        /// </summary>
+        private static string GetAnonymizedPatientID(string originalPatientID)
+        {
+            if (string.IsNullOrEmpty(originalPatientID))
+            {
+                return "ANON";
+            }
+
+            // Try to read from AnonymizationKey
+            if (!string.IsNullOrEmpty(_anonymizationKeyPath) && File.Exists(_anonymizationKeyPath))
+            {
+                try
+                {
+                    string json = File.ReadAllText(_anonymizationKeyPath);
+                    AnonymizationKey anonKey = JsonConvert.DeserializeObject<AnonymizationKey>(json);
+
+                    if (anonKey != null && anonKey.Mappings != null && anonKey.Mappings.ContainsKey(originalPatientID))
+                    {
+                        return anonKey.Mappings[originalPatientID];
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Warning: Could not read AnonymizationKey for C-STORE anonymization: {ex.Message}");
+                }
+            }
+
+            // Fallback to deterministic hash (this shouldn't happen if GetOrCreateAnonymizedMRN was called first)
+            return DeterministicHashString("PatientID:" + originalPatientID);
+        }
         /// <summary>
         /// Produce a deterministic 8-character hex string from (purpose + original value + salt).
         /// The same original DICOM value will always hash to the same result regardless of

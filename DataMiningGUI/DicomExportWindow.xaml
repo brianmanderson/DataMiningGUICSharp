@@ -22,7 +22,7 @@
             <Setter Property="Cursor" Value="Hand"/>
         </Style>
     </Window.Resources>
-    
+
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -31,21 +31,21 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        
+
         <!-- Header -->
         <StackPanel Grid.Row="0" Margin="0,0,0,12">
             <TextBlock Text="DICOM Export" FontSize="20" FontWeight="Bold" Foreground="#1976D2"/>
             <TextBlock Text="Select patients, examinations, and data types to export" 
                        Foreground="#666666" Margin="0,4,0,0"/>
         </StackPanel>
-        
+
         <!-- Main Content Area -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="220"/>
             </Grid.ColumnDefinitions>
-            
+
             <!-- Patient/Examination Selection TreeView -->
             <Border Grid.Column="0" Background="White" BorderBrush="#DDDDDD" BorderThickness="1" 
                     CornerRadius="4" Margin="0,0,12,0">
@@ -54,7 +54,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-                    
+
                     <!-- Select All Header -->
                     <Border Grid.Row="0" Background="#FAFAFA" BorderBrush="#EEEEEE" 
                             BorderThickness="0,0,0,1" Padding="12,8">
@@ -75,7 +75,7 @@
                             </StackPanel>
                         </Grid>
                     </Border>
-                    
+
                     <!-- TreeView for Patient/Examination Selection -->
                     <TreeView x:Name="PatientTreeView" Grid.Row="1" BorderThickness="0"
                               Padding="8" Background="Transparent">
@@ -98,7 +98,7 @@
                                     <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
                                 </StackPanel>
                             </HierarchicalDataTemplate>
-                            
+
                             <!-- Course Template -->
                             <HierarchicalDataTemplate DataType="{x:Type local:ExportCourseItem}" 
                                                       ItemsSource="{Binding Examinations}">
@@ -111,7 +111,7 @@
                                     <TextBlock Text="{Binding CourseName}"/>
                                 </StackPanel>
                             </HierarchicalDataTemplate>
-                            
+
                             <!-- Examination Template -->
                             <DataTemplate DataType="{x:Type local:ExportExaminationItem}">
                                 <StackPanel Orientation="Horizontal">
@@ -131,16 +131,16 @@
                     </TreeView>
                 </Grid>
             </Border>
-            
+
             <!-- Export Options Panel -->
             <Border Grid.Column="1" Background="White" BorderBrush="#DDDDDD" 
                     BorderThickness="1" CornerRadius="4" Padding="16">
                 <StackPanel>
                     <TextBlock Text="Export Options" Style="{StaticResource SectionHeader}"/>
-                    
+
                     <TextBlock Text="Data Types to Export:" FontWeight="Medium" 
                                Margin="0,0,0,8" Foreground="#555555"/>
-                    
+
                     <CheckBox x:Name="ExportExaminationCheckBox" Content="Examination"
                               Style="{StaticResource CheckBoxStyle}" IsChecked="True"/>
                     <CheckBox x:Name="ExportStructureCheckBox" Content="Structure Set"
@@ -172,30 +172,36 @@
 
                     <CheckBox x:Name="AnonymizeCheckBox" Content="Anonymize?"
                               Style="{StaticResource CheckBoxStyle}" IsChecked="False"
+                              Checked="AnonymizeCheckBox_CheckChanged"
+                              Unchecked="AnonymizeCheckBox_CheckChanged"
                               ToolTip="Anonymize patient demographics before saving. UIDs (FrameOfReference, Study, Series, SOP) are preserved."/>
 
+                    <Button Content="Edit Anonymization Key..." Click="EditAnonymizationKeyButton_Click"
+                            Margin="20,4,0,0" Padding="8,4" HorizontalAlignment="Left"/>
+
                     <Separator Margin="0,12"/>
-                    
+                    <Separator Margin="0,12"/>
+
                     <TextBlock Text="DICOM Connection" Style="{StaticResource SectionHeader}"/>
-                    
+
                     <TextBlock Text="Remote AE Title:" FontSize="11" Foreground="#666666"/>
                     <TextBox x:Name="RemoteAETitleTextBox" Text="VMSDBD" Margin="0,2,0,8"/>
-                    
+
                     <TextBlock Text="Remote IP:" FontSize="11" Foreground="#666666"/>
                     <TextBox x:Name="RemoteIPTextBox" Text="10.196.17.156" Margin="0,2,0,8"/>
-                    
+
                     <TextBlock Text="Remote Port:" FontSize="11" Foreground="#666666"/>
                     <TextBox x:Name="RemotePortTextBox" Text="51402" Margin="0,2,0,8"/>
-                    
+
                     <TextBlock Text="Local AE Title:" FontSize="11" Foreground="#666666"/>
                     <TextBox x:Name="LocalAETitleTextBox" Text="QR_PHI_EVAL3" Margin="0,2,0,8"/>
-                    
+
                     <TextBlock Text="Local Port:" FontSize="11" Foreground="#666666"/>
                     <TextBox x:Name="LocalPortTextBox" Text="54323" Margin="0,2,0,0"/>
                 </StackPanel>
             </Border>
         </Grid>
-        
+
         <!-- Export Folder Selection -->
         <Border Grid.Row="2" Background="White" BorderBrush="#DDDDDD" BorderThickness="1" 
                 CornerRadius="4" Padding="12" Margin="0,12,0,0">
@@ -205,7 +211,7 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                
+
                 <TextBlock Text="Export Folder:" VerticalAlignment="Center" 
                            FontWeight="Medium" Margin="0,0,12,0"/>
                 <TextBox x:Name="ExportFolderTextBox" Grid.Column="1" 
@@ -215,9 +221,24 @@
                         Style="{StaticResource ButtonStyle}" Margin="8,0,0,0"/>
             </Grid>
         </Border>
-        
+    <!-- Anonymization Key Location Display -->
+        <Border Grid.Row="3" Background="#FFF9C4" BorderBrush="#FBC02D" BorderThickness="1" 
+            CornerRadius="4" Padding="8" Margin="0,8,0,0"
+            x:Name="AnonymizationKeyInfoPanel" Visibility="Collapsed">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Anonymization Key:" VerticalAlignment="Center" 
+                       FontWeight="Medium" Margin="0,0,8,0"/>
+                <TextBlock Grid.Column="1" x:Name="AnonymizationKeyLocationText" 
+                       VerticalAlignment="Center" TextWrapping="Wrap" Foreground="#666666"/>
+            </Grid>
+        </Border>
+
         <!-- Progress Area -->
-        <Border Grid.Row="3" Background="White" BorderBrush="#DDDDDD" BorderThickness="1" 
+        <Border Grid.Row="4" Background="White" BorderBrush="#DDDDDD" BorderThickness="1" 
                 CornerRadius="4" Padding="12" Margin="0,12,0,0"
                 x:Name="ProgressPanel" Visibility="Collapsed">
             <StackPanel>
@@ -229,7 +250,7 @@
         </Border>
         
         <!-- Action Buttons -->
-        <Grid Grid.Row="4" Margin="0,16,0,0">
+        <Grid Grid.Row="5" Margin="0,16,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
