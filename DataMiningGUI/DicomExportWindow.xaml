@@ -29,7 +29,6 @@
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- Header -->
@@ -204,7 +203,7 @@
 
         <!-- Export Folder Selection -->
         <Border Grid.Row="2" Background="White" BorderBrush="#DDDDDD" BorderThickness="1" 
-                CornerRadius="4" Padding="12" Margin="0,12,0,0">
+        CornerRadius="4" Padding="12" Margin="0,12,0,0">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -213,60 +212,65 @@
                 </Grid.ColumnDefinitions>
 
                 <TextBlock Text="Export Folder:" VerticalAlignment="Center" 
-                           FontWeight="Medium" Margin="0,0,12,0"/>
+                   FontWeight="Medium" Margin="0,0,12,0"/>
                 <TextBox x:Name="ExportFolderTextBox" Grid.Column="1" 
-                         VerticalAlignment="Center" Padding="8,6"
-                         Text="\\ad.ucsd.edu\ahs\CANC\RADONC\BMAnderson\DicomExport"/>
+                 VerticalAlignment="Center" Padding="8,6"
+                 Text="\\ad.ucsd.edu\ahs\CANC\RADONC\BMAnderson\DicomExport"/>
                 <Button Grid.Column="2" Content="Browse..." Click="BrowseFolder_Click"
-                        Style="{StaticResource ButtonStyle}" Margin="8,0,0,0"/>
-            </Grid>
-        </Border>
-    <!-- Anonymization Key Location Display -->
-        <Border Grid.Row="3" Background="#FFF9C4" BorderBrush="#FBC02D" BorderThickness="1" 
-            CornerRadius="4" Padding="8" Margin="0,8,0,0"
-            x:Name="AnonymizationKeyInfoPanel" Visibility="Collapsed">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Anonymization Key:" VerticalAlignment="Center" 
-                       FontWeight="Medium" Margin="0,0,8,0"/>
-                <TextBlock Grid.Column="1" x:Name="AnonymizationKeyLocationText" 
-                       VerticalAlignment="Center" TextWrapping="Wrap" Foreground="#666666"/>
+                Style="{StaticResource ButtonStyle}" Margin="8,0,0,0"/>
             </Grid>
         </Border>
 
-        <!-- Progress Area -->
-        <Border Grid.Row="4" Background="White" BorderBrush="#DDDDDD" BorderThickness="1" 
-                CornerRadius="4" Padding="12" Margin="0,12,0,0"
-                x:Name="ProgressPanel" Visibility="Collapsed">
-            <StackPanel>
-                <TextBlock x:Name="ProgressText" Text="Exporting..." Margin="0,0,0,8"/>
-                <ProgressBar x:Name="ExportProgressBar" Height="20" Minimum="0" Maximum="100"/>
-                <TextBlock x:Name="ProgressDetailText" Text="" Foreground="#666666" 
-                           FontSize="11" Margin="0,4,0,0"/>
-            </StackPanel>
-        </Border>
-        
-        <!-- Action Buttons -->
-        <Grid Grid.Row="5" Margin="0,16,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            
-            <TextBlock x:Name="SelectionSummaryText" VerticalAlignment="Center" 
-                       Foreground="#666666" Text="0 examinations selected"/>
-            
-            <Button Grid.Column="2" x:Name="CancelButton" Content="Cancel" 
-                    Style="{StaticResource ButtonStyle}" Click="CancelButton_Click"
-                    Width="150" Margin="0,0,8,0"/>
-            <Button Grid.Column="3" x:Name="ExportButton" Content="Export" 
-                    Style="{StaticResource ButtonStyle}" Click="ExportButton_Click"
-                    Width="150" Background="#1976D2" Foreground="White"/>
-        </Grid>
+        <!-- Bottom Section: Info Panels + Buttons in a StackPanel to prevent overlap -->
+        <StackPanel Grid.Row="3" Margin="0,8,0,0">
+
+            <!-- Anonymization Key Location Display -->
+            <Border Background="#FFF9C4" BorderBrush="#FBC02D" BorderThickness="1" 
+            CornerRadius="4" Padding="8" Margin="0,0,0,8"
+            x:Name="AnonymizationKeyInfoPanel" Visibility="Collapsed">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Anonymization Key:" VerticalAlignment="Center" 
+                       FontWeight="Medium" Margin="0,0,8,0"/>
+                    <TextBlock Grid.Column="1" x:Name="AnonymizationKeyLocationText" 
+                       VerticalAlignment="Center" TextWrapping="Wrap" Foreground="#666666"/>
+                </Grid>
+            </Border>
+
+            <!-- Progress Area -->
+            <Border Background="White" BorderBrush="#DDDDDD" BorderThickness="1" 
+            CornerRadius="4" Padding="12" Margin="0,0,0,8"
+            x:Name="ProgressPanel" Visibility="Collapsed">
+                <StackPanel>
+                    <TextBlock x:Name="ProgressText" Text="Exporting..." Margin="0,0,0,8"/>
+                    <ProgressBar x:Name="ExportProgressBar" Height="20" Minimum="0" Maximum="100"/>
+                    <TextBlock x:Name="ProgressDetailText" Text="" Foreground="#666666" 
+                       FontSize="11" Margin="0,4,0,0"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Action Buttons -->
+            <Grid Margin="0,8,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="SelectionSummaryText" VerticalAlignment="Center" 
+                   Foreground="#666666" Text="0 examinations selected"/>
+
+                <Button Grid.Column="2" x:Name="CancelButton" Content="Cancel" 
+                Style="{StaticResource ButtonStyle}" Click="CancelButton_Click"
+                Width="150" Margin="0,0,8,0"/>
+                <Button Grid.Column="3" x:Name="ExportButton" Content="Export" 
+                Style="{StaticResource ButtonStyle}" Click="ExportButton_Click"
+                Width="150" Background="#1976D2" Foreground="White"/>
+            </Grid>
+        </StackPanel>
     </Grid>
 </Window>
