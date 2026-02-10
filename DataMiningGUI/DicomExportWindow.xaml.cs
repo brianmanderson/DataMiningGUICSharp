@@ -537,6 +537,56 @@ namespace DataMiningGUI
         private void AnonymizeCheckBox_CheckChanged(object sender, RoutedEventArgs e)
         {
             UpdateAnonymizationKeyDisplay();
+            UpdatePatientAnonymizedDisplays();
+        }
+        private void UpdatePatientAnonymizedDisplays()
+        {
+            bool showAnon = AnonymizeCheckBox.IsChecked.HasValue && AnonymizeCheckBox.IsChecked.Value;
+            string keyFilePath = GetCurrentAnonymizationKeyPath();
+
+            foreach (ExportPatientItem patient in _patients)
+            {
+                patient.ShowAnonymizedID = showAnon;
+
+                if (showAnon)
+                {
+                    // Generate or retrieve the anonymized ID for this patient
+                    patient.AnonymizedID = GetOrPreviewAnonymizedMRN(keyFilePath, patient.MRN);
+                }
+            }
+        }
+
+        private string GetCurrentAnonymizationKeyPath()
+        {
+            if (!string.IsNullOrEmpty(_customAnonymizationKeyPath))
+            {
+                return _customAnonymizationKeyPath;
+            }
+            return System.IO.Path.Combine(ExportFolderTextBox.Text.Trim(), "AnonymizationKey.json");
+        }
+
+        private string GetOrPreviewAnonymizedMRN(string keyFilePath, string originalMRN)
+        {
+            // First check if there's an existing mapping in the key file
+            if (System.IO.File.Exists(keyFilePath))
+            {
+                try
+                {
+                    string json = System.IO.File.ReadAllText(keyFilePath);
+                    AnonymizationKey anonKey = Newtonsoft.Json.JsonConvert.DeserializeObject<AnonymizationKey>(json);
+                    if (anonKey != null && anonKey.Mappings != null && anonKey.Mappings.ContainsKey(originalMRN))
+                    {
+                        return anonKey.Mappings[originalMRN];
+                    }
+                }
+                catch
+                {
+                    // Ignore read errors, fall through to generate hash
+                }
+            }
+
+            // Generate deterministic hash (same logic as DicomCStoreReceiverService)
+            return DicomCStoreReceiverService.DeterministicHashString("PatientID:" + originalMRN);
         }
         private void ExportRegistrationsCheckBox_CheckChanged(object sender, RoutedEventArgs e)
         {
@@ -758,6 +808,12 @@ namespace DataMiningGUI
             }
 
             UpdateAnonymizationKeyDisplay();
+
+            // Refresh anonymized IDs in case mappings changed
+            if (AnonymizeCheckBox.IsChecked.HasValue && AnonymizeCheckBox.IsChecked.Value)
+            {
+                UpdatePatientAnonymizedDisplays();
+            }
         }
 
         private void UpdateAnonymizationKeyDisplay()

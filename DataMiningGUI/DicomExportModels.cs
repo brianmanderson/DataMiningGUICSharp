@@ -14,6 +14,8 @@ namespace DataMiningGUI
     public class ExportPatientItem : INotifyPropertyChanged
     {
         private bool _isSelected;
+        private string _anonymizedID;
+        private bool _showAnonymizedID;
 
         public string MRN { get; set; }
         public string FirstName { get; set; }
@@ -21,9 +23,45 @@ namespace DataMiningGUI
         public PatientClass PatientData { get; set; }
         public ObservableCollection<ExportCourseItem> Courses { get; set; }
 
+        public string AnonymizedID
+        {
+            get { return _anonymizedID; }
+            set
+            {
+                if (_anonymizedID != value)
+                {
+                    _anonymizedID = value;
+                    OnPropertyChanged("AnonymizedID");
+                    OnPropertyChanged("DisplayName");
+                }
+            }
+        }
+
+        public bool ShowAnonymizedID
+        {
+            get { return _showAnonymizedID; }
+            set
+            {
+                if (_showAnonymizedID != value)
+                {
+                    _showAnonymizedID = value;
+                    OnPropertyChanged("ShowAnonymizedID");
+                    OnPropertyChanged("DisplayName");
+                }
+            }
+        }
+
         public string DisplayName
         {
-            get { return string.Format("{0} - {1}, {2}", MRN, LastName, FirstName); }
+            get
+            {
+                string baseName = string.Format("{0} - {1}, {2}", MRN, LastName, FirstName);
+                if (_showAnonymizedID && !string.IsNullOrEmpty(_anonymizedID))
+                {
+                    return string.Format("{0} -> {1}", baseName, _anonymizedID);
+                }
+                return baseName;
+            }
         }
 
         public bool IsSelected
