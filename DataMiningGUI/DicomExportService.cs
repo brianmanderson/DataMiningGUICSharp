@@ -345,7 +345,7 @@ namespace DataMiningGUI
 
                         PendingExport pending = pendingExports[i];
                         int seriesPercent = (int)((double)i / totalPending * 100);
-
+                        overallPercent = (int)((double)(processedItems*totalPending + i) / (totalPending * totalItems) * 100);
                         if (progress != null)
                         {
                             progress.Report(new DicomExportProgress
