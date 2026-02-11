@@ -192,7 +192,7 @@ namespace DataMiningGUI
                     if (options.ExportExamination && !string.IsNullOrEmpty(item.SeriesInstanceUID))
                     {
                         await ExportSeriesByUIDAsync(allSeries, item.SeriesInstanceUID,
-                            options, _currentExportPath, "Examination", progress, cancellationToken);
+                            options, _currentExportPath, $"{patientFolder} : Examination", progress, cancellationToken);
                     }
 
                     // Export Structure Set, Plan, and Dose by finding related series
@@ -211,7 +211,7 @@ namespace DataMiningGUI
                                 foreach (DicomDataset series in allImagesRT)
                                 {
                                     await ExportSeriesAsync(series, options, structureFolder,
-                                            "Structure", progress, cancellationToken);
+                                            $"{patientFolder} : Structure", progress, cancellationToken);
                                 }
                             }
                         }
@@ -224,7 +224,7 @@ namespace DataMiningGUI
                             foreach (DicomDataset series in rtPlanSeries)
                             {
                                 await ExportSeriesAsync(series, options, planFolder,
-                                    "Plan", progress, cancellationToken);
+                                    $"{patientFolder} : Plan", progress, cancellationToken);
                             }
                         }
 
@@ -245,7 +245,7 @@ namespace DataMiningGUI
                                 {
                                     seriesUIDs.Add(seriesUID);
                                     await ExportSeriesImageAsync(series, options, doseFolder,
-                                        "Dose", progress, cancellationToken);
+                                        $"{patientFolder} : Dose", progress, cancellationToken);
                                 }
                             }
                         }
