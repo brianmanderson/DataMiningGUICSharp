@@ -1,4 +1,5 @@
 using DataBaseStructure.AriaBase;
+using FellowOakDicom;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -234,6 +235,22 @@ namespace DataMiningGUI
     }
 
     /// <summary>
+    /// Represents a single pending DICOM export operation collected during the planning phase.
+    /// </summary>
+    public class PendingExport
+    {
+        public DicomDataset Series { get; set; }
+        public string ExportPath { get; set; }
+        public string DataType { get; set; }
+
+        /// <summary>
+        /// True = use image-level C-MOVE (StudyUID + SeriesUID + SOPInstanceUID, e.g. for Dose).
+        /// False = use series-level C-MOVE (StudyUID + SeriesUID only).
+        /// </summary>
+        public bool IsImageLevel { get; set; }
+    }
+
+    /// <summary>
     /// Registration information for export
     /// </summary>
     public class RegistrationExportInfo
@@ -308,9 +325,27 @@ namespace DataMiningGUI
     /// </summary>
     public class DicomExportProgress
     {
-        public int PercentComplete { get; set; }
+        /// <summary>
+        /// Overall progress across all ExportItems (0-100)
+        /// </summary>
+        public int OverallPercentComplete { get; set; }
+
+        /// <summary>
+        /// Per-item series export progress (0-100), -1 if not applicable (e.g. during query phase)
+        /// </summary>
+        public int SeriesPercentComplete { get; set; } = -1;
+
         public string StatusMessage { get; set; }
         public string DetailMessage { get; set; }
+
+        /// <summary>
+        /// Kept for backward compatibility — maps to OverallPercentComplete
+        /// </summary>
+        public int PercentComplete
+        {
+            get { return OverallPercentComplete; }
+            set { OverallPercentComplete = value; }
+        }
     }
 
     #endregion

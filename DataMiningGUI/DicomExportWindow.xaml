@@ -245,8 +245,16 @@
             CornerRadius="4" Padding="12" Margin="0,0,0,8"
             x:Name="ProgressPanel" Visibility="Collapsed">
                 <StackPanel>
-                    <TextBlock x:Name="ProgressText" Text="Exporting..." Margin="0,0,0,8"/>
-                    <ProgressBar x:Name="ExportProgressBar" Height="20" Minimum="0" Maximum="100"/>
+                    <TextBlock x:Name="ProgressText" Text="Exporting..." Margin="0,0,0,4"/>
+
+                    <!-- Overall progress (across all ExportItems) -->
+                    <TextBlock Text="Overall Progress:" FontSize="11" Foreground="#666666" Margin="0,0,0,2"/>
+                    <ProgressBar x:Name="OverallProgressBar" Height="18" Minimum="0" Maximum="100"/>
+
+                    <!-- Per-item series progress -->
+                    <TextBlock Text="Current Item:" FontSize="11" Foreground="#666666" Margin="0,8,0,2"/>
+                    <ProgressBar x:Name="SeriesProgressBar" Height="18" Minimum="0" Maximum="100"/>
+
                     <TextBlock x:Name="ProgressDetailText" Text="" Foreground="#666666" 
                        FontSize="11" Margin="0,4,0,0"/>
                 </StackPanel>

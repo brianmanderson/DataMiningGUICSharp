@@ -758,7 +758,25 @@ namespace DataMiningGUI
         {
             Dispatcher.Invoke(() =>
             {
-                ExportProgressBar.Value = progress.PercentComplete;
+                // Overall progress bar (across all ExportItems)
+                if (progress.OverallPercentComplete >= 0)
+                {
+                    OverallProgressBar.IsIndeterminate = false;
+                    OverallProgressBar.Value = progress.OverallPercentComplete;
+                }
+
+                // Per-item series progress bar
+                if (progress.SeriesPercentComplete < 0)
+                {
+                    // Querying / indeterminate phase
+                    SeriesProgressBar.IsIndeterminate = true;
+                }
+                else
+                {
+                    SeriesProgressBar.IsIndeterminate = false;
+                    SeriesProgressBar.Value = progress.SeriesPercentComplete;
+                }
+
                 ProgressText.Text = progress.StatusMessage;
                 ProgressDetailText.Text = progress.DetailMessage;
             });
