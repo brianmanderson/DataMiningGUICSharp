@@ -425,15 +425,23 @@ namespace DataMiningGUI
 
             // Get the primary exam's FrameOfReference
             string primaryFrameOfRef = null;
+            // Step 1: Build lookup of FrameOfReference -> ExaminationClass
+            Dictionary<string, List<ExaminationClass>> frameOfRefToExams = new Dictionary<string, List<ExaminationClass>>();
             if (item.ExamData != null && item.ExamData.EquipmentInfo != null)
             {
                 primaryFrameOfRef = item.ExamData.EquipmentInfo.FrameOfReference;
+                if (!frameOfRefToExams.ContainsKey(primaryFrameOfRef))
+                {
+                    frameOfRefToExams[primaryFrameOfRef] = new List<ExaminationClass>();
+                }
             }
-
             if (string.IsNullOrEmpty(primaryFrameOfRef))
             {
                 return pendingExports;
             }
+
+
+
 
             // Build list of allowed modalities
             List<string> allowedModalities = new List<string>();
@@ -444,14 +452,13 @@ namespace DataMiningGUI
 
             bool includeCBCT = options.ExportRegistrationsCBCT;
 
-            // Step 1: Build lookup of FrameOfReference -> ExaminationClass
-            Dictionary<string, List<ExaminationClass>> frameOfRefToExams = new Dictionary<string, List<ExaminationClass>>();
             if (item.AssociatedExams != null)
             {
                 foreach (ExaminationClass exam in item.AssociatedExams)
                 {
                     string examFrameOfRef = GetExamFrameOfReference(exam);
-                    if (string.IsNullOrEmpty(examFrameOfRef))
+                    // Skip null frame of reference and the planning exam, we already exported it
+                    if (string.IsNullOrEmpty(examFrameOfRef) || exam.SeriesInstanceUID == item.ExamData.SeriesInstanceUID)
                     {
                         continue;
                     }
@@ -593,6 +600,47 @@ namespace DataMiningGUI
                 }
             }
 
+            // Step 6: Collect exams that share the same FrameOfReferenceUID as the primary exam
+            // These are inherently co-registered and don't need a registration object
+            if (frameOfRefToExams.ContainsKey(primaryFrameOfRef))
+            {
+                foreach (ExaminationClass coRegisteredExam in frameOfRefToExams[primaryFrameOfRef])
+                {
+                    string seriesUID = coRegisteredExam.SeriesInstanceUID;
+                    if (string.IsNullOrEmpty(seriesUID) || collectedSeriesUIDs.Contains(seriesUID))
+                    {
+                        continue;
+                    }
+
+                    // Skip if this is the primary exam itself
+                    if (item.ExamData != null && seriesUID == item.ExamData.SeriesInstanceUID)
+                    {
+                        continue;
+                    }
+
+                    string examName = !string.IsNullOrEmpty(coRegisteredExam.ExamName)
+                        ? coRegisteredExam.ExamName
+                        : "UnknownCoRegistered";
+                    string examFolder = Path.Combine(baseExportPath, "RegisteredImages", SanitizeFolderName(examName));
+                    EnsureDirectoryExists(examFolder);
+
+                    IEnumerable<DicomDataset> matchingSeries = allSeries.Where(s =>
+                        GetStringValue(s, DicomTag.SeriesInstanceUID) == seriesUID);
+
+                    foreach (DicomDataset series in matchingSeries)
+                    {
+                        pendingExports.Add(new PendingExport
+                        {
+                            Series = series,
+                            ExportPath = examFolder,
+                            DataType = string.Format("Co-registered Image ({0})", examName),
+                            IsImageLevel = false
+                        });
+                    }
+
+                    collectedSeriesUIDs.Add(seriesUID);
+                }
+            }
             return pendingExports;
         }
 
