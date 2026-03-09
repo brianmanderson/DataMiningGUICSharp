@@ -1,4 +1,4 @@
-using DataBaseStructure;
+﻿using DataBaseStructure;
 using DataBaseStructure.AriaBase;
 using FellowOakDicom;
 using FellowOakDicom.Network;
@@ -8,6 +8,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,7 +20,7 @@ namespace DataMiningGUI
     /// <summary>
     /// Interaction logic for MainWindow.xaml
     /// </summary>
-        public partial class MainWindow : Window
+    public partial class MainWindow : Window
     {
         #region Fields
 
@@ -43,6 +44,9 @@ namespace DataMiningGUI
         private int _totalPages = 1;
         private List<PatientDisplayItem> _allFilteredItems = new List<PatientDisplayItem>();
 
+        // Anonymization
+        private bool _isAnonymized = false;
+
         #endregion
 
         #region Constructor
@@ -51,7 +55,7 @@ namespace DataMiningGUI
         {
             InitializeComponent();
             PatientDataGrid.ItemsSource = _displayItems;
-            InitializeFolderCheckBoxes();
+            InitializeFolderCheckBoxesAsync();
         }
 
         #endregion
@@ -59,57 +63,78 @@ namespace DataMiningGUI
         #region Initialization
 
         /// <summary>
-        /// Discovers folders containing JSON files and creates checkboxes for each
+        /// Discovers folders containing JSON files asynchronously and creates checkboxes for each.
+        /// Network directory scanning is offloaded to a background thread for responsiveness.
         /// </summary>
-        private void InitializeFolderCheckBoxes()
+        private async void InitializeFolderCheckBoxesAsync()
         {
             try
             {
-                if (!Directory.Exists(_databasePath))
+                StatusText.Text = "Scanning database folders...";
+                LoadPatientsButton.IsEnabled = false;
+
+                // Determine which database path to use (quick check)
+                string effectivePath = _databasePath;
+                bool localExists = await Task.Run(() => Directory.Exists(_databasePath));
+                if (!localExists)
                 {
                     StatusText.Text = $"Database path not found: {_databasePath}, switching to {_backupDatabasePath}";
-                    _databasePath = _backupDatabasePath;
+                    effectivePath = _backupDatabasePath;
+                    _databasePath = effectivePath;
                 }
 
-                var directories = Directory.GetDirectories(_databasePath);
-
-                foreach (var directory in directories.OrderByDescending(d => d))
+                // Heavy I/O: scan directories and count JSON files on a background thread
+                var folderData = await Task.Run(() =>
                 {
-                    var folderName = Path.GetFileName(directory);
-                    if (folderName != "2027")
+                    var results = new List<(string FolderName, List<string> JsonFiles)>();
+
+                    string[] directories;
+                    try
                     {
-                        //continue;
+                        directories = Directory.GetDirectories(effectivePath);
                     }
-                    var jsonFiles = new List<string>();
-
-                    // Check if this directory contains any JSON files (including subdirectories)
-                    jsonFiles = AriaDataBaseJsonReader.ReturnPatientFileNames(
-                        directory,
-                        jsonFiles,
-                        "*.json",
-                        SearchOption.AllDirectories);
-
-                    if (jsonFiles.Count > 0)
+                    catch
                     {
-                        // Store the JSON files for this folder
-                        _folderJsonFiles[folderName] = jsonFiles;
+                        return results;
+                    }
 
-                        // Create checkbox for this folder
-                        var checkBox = new CheckBox
+                    foreach (var directory in directories.OrderByDescending(d => d))
+                    {
+                        var folderName = Path.GetFileName(directory);
+                        var jsonFiles = new List<string>();
+
+                        jsonFiles = AriaDataBaseJsonReader.ReturnPatientFileNames(
+                            directory,
+                            jsonFiles,
+                            "*.json",
+                            SearchOption.AllDirectories);
+
+                        if (jsonFiles.Count > 0)
                         {
-                            Content = $"{folderName} ({jsonFiles.Count} files)",
-                            Tag = folderName,
-                            Style = (Style)FindResource("FolderCheckBoxStyle")
-                        };
-
-                        // Update selected files count when checkbox changes
-                        checkBox.Checked += FolderCheckBox_SelectionChanged;
-                        checkBox.Unchecked += FolderCheckBox_SelectionChanged;
-
-                        _folderCheckBoxes[folderName] = checkBox;
-                        FolderCheckBoxPanel.Items.Add(checkBox);
-                        //break;
+                            results.Add((folderName, jsonFiles));
+                        }
                     }
+
+                    return results;
+                });
+
+                // Back on UI thread: create checkboxes from the collected data
+                foreach (var (folderName, jsonFiles) in folderData)
+                {
+                    _folderJsonFiles[folderName] = jsonFiles;
+
+                    var checkBox = new CheckBox
+                    {
+                        Content = $"{folderName} ({jsonFiles.Count} files)",
+                        Tag = folderName,
+                        Style = (Style)FindResource("FolderCheckBoxStyle")
+                    };
+
+                    checkBox.Checked += FolderCheckBox_SelectionChanged;
+                    checkBox.Unchecked += FolderCheckBox_SelectionChanged;
+
+                    _folderCheckBoxes[folderName] = checkBox;
+                    FolderCheckBoxPanel.Items.Add(checkBox);
                 }
 
                 if (_folderCheckBoxes.Count == 0)
@@ -128,6 +153,10 @@ namespace DataMiningGUI
                 StatusText.Text = $"Error initializing: {ex.Message}";
                 MessageBox.Show($"Error scanning database folders:\n{ex.Message}",
                     "Initialization Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                LoadPatientsButton.IsEnabled = true;
             }
         }
 
@@ -166,6 +195,15 @@ namespace DataMiningGUI
         private void SearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             _currentPage = 1; // Reset to first page on new search
+            UpdateDisplayedPatients();
+        }
+
+        /// <summary>
+        /// Toggles anonymized display of MRN and Patient Name
+        /// </summary>
+        private void AnonymizeCheckBox_Changed(object sender, RoutedEventArgs e)
+        {
+            _isAnonymized = AnonymizeCheckBox.IsChecked == true;
             UpdateDisplayedPatients();
         }
 
@@ -517,6 +555,12 @@ namespace DataMiningGUI
                 .OrderByDescending(item => item.ReviewDateTimeSortable)
                 .ToList();
 
+            // Apply anonymization if the checkbox is checked
+            foreach (var item in _allFilteredItems)
+            {
+                ApplyAnonymizationIfNeeded(item);
+            }
+
             // Calculate total pages
             _totalPages = _allFilteredItems.Count > 0
                 ? (int)Math.Ceiling((double)_allFilteredItems.Count / MaxDisplayCount)
@@ -601,7 +645,7 @@ namespace DataMiningGUI
             // Extract Energy and Technique info
             var energy = "N/A";
             var technique = "N/A";
-            
+
             if (beamSet?.Beams != null && beamSet.Beams.Any())
             {
                 var firstBeam = beamSet.Beams.FirstOrDefault();
@@ -709,6 +753,34 @@ namespace DataMiningGUI
         #endregion
 
         #region Helper Methods
+
+        /// <summary>
+        /// Deterministic hash function matching DicomCStoreReceiverService.DeterministicHashString.
+        /// Same input + same salt → same output every time.
+        /// </summary>
+        private static string DeterministicHashString(string inputString)
+        {
+            string salt = "DicomExportAnon";
+            string salted = $"{inputString}:{salt}";
+            using (SHA256 sha = SHA256.Create())
+            {
+                byte[] hashBytes = sha.ComputeHash(Encoding.UTF8.GetBytes(salted));
+                return "A" + BitConverter.ToString(hashBytes, 0, 4).Replace("-", "");
+            }
+        }
+
+        /// <summary>
+        /// Applies anonymization to a display item's MRN and PatientName if anonymization is active
+        /// </summary>
+        private void ApplyAnonymizationIfNeeded(PatientDisplayItem item)
+        {
+            if (!_isAnonymized) return;
+
+            // Store originals as backing data (MRN is key for hash)
+            string originalMRN = item.MRN;
+            item.MRN = DeterministicHashString("PatientID:" + originalMRN);
+            item.PatientName = DeterministicHashString("PatientName:" + originalMRN);
+        }
 
         /// <summary>
         /// Formats patient name from first and last name

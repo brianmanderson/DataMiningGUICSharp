@@ -27,6 +27,9 @@ namespace DataMiningGUI
         [Description("Diagnosis Code")]
         DiagnosisCode,
 
+        [Description("Gender")]
+        Gender,
+
         [Description("Patient Name")]
         PatientName,
 
@@ -555,6 +558,11 @@ namespace DataMiningGUI
                 case FilterField.DiagnosisCode:
                     return string.Join(",", context.Course?.DiagnosisCodes) ?? string.Empty;
 
+                case FilterField.Gender:
+                    return context.Patient != null
+                        ? GenderIntToString((int?)context.Patient.Gender)
+                        : string.Empty;
+
                 case FilterField.PlanType:
                     return context.Plan?.PlanType ?? string.Empty;
 
@@ -682,6 +690,27 @@ namespace DataMiningGUI
         #endregion
 
         #region Helper Methods for Field Value Extraction
+
+        /// <summary>
+        /// Converts the integer gender code to a human-readable string.
+        /// Uses standard DICOM PS3.3 C.7.1.1 mapping:
+        ///   0 = Unknown, 1 = Male, 2 = Female, 3 = Other
+        /// The filter supports matching on these display strings (e.g. "Male")
+        /// as well as the raw integer (e.g. "1") via the Contains/Equals operators.
+        /// </summary>
+        private static string GenderIntToString(int? gender)
+        {
+            if (!gender.HasValue) return string.Empty;
+
+            switch (gender.Value)
+            {
+                case 0: return "Unknown";
+                case 1: return "Male";
+                case 2: return "Female";
+                case 3: return "Other";
+                default: return gender.Value.ToString();
+            }
+        }
 
         private static int? GetNumberOfFractions(FilterContext context)
         {

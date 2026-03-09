@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:DataMiningGUI"
         mc:Ignorable="d"
-        Title="Data Mining GUI - Patient Browser" Height="650" Width="1150"
+        Title="Data Mining GUI - Patient Browser" Height="650" Width="1250"
         WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
@@ -77,6 +77,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
@@ -91,20 +92,29 @@
                                 FontWeight="SemiBold"
                                 MinWidth="120"/>
 
+                        <CheckBox x:Name="AnonymizeCheckBox"
+                                  Grid.Column="1"
+                                  Content="Anonymize?"
+                                  VerticalAlignment="Center"
+                                  Margin="10,0,5,0"
+                                  ToolTip="Display anonymized MRN and Patient Name using deterministic hash"
+                                  Checked="AnonymizeCheckBox_Changed"
+                                  Unchecked="AnonymizeCheckBox_Changed"/>
+
                         <Button x:Name="CancelLoadButton" 
-                                Grid.Column="1"
+                                Grid.Column="2"
                                 Content="Cancel" 
                                 Click="CancelLoad_Click"
                                 Style="{StaticResource ActionButtonStyle}"
                                 Visibility="Collapsed"/>
 
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="20,0,0,0">
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="20,0,0,0">
                             <TextBlock x:Name="LoadProgressText" Text="" VerticalAlignment="Center" Margin="0,0,10,0"/>
                             <ProgressBar x:Name="LoadProgressBar" Width="200" Height="18" 
                                          Minimum="0" Maximum="100" Value="0" Visibility="Collapsed"/>
                         </StackPanel>
 
-                        <TextBlock Grid.Column="3" x:Name="SelectedFilesText" Text="0 files selected" 
+                        <TextBlock Grid.Column="4" x:Name="SelectedFilesText" Text="0 files selected" 
                                    VerticalAlignment="Center" Foreground="#666666"/>
                     </Grid>
                 </Border>
