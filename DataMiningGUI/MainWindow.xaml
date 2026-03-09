@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:DataMiningGUI"
         mc:Ignorable="d"
-        Title="Data Mining GUI - Patient Browser" Height="650" Width="1250"
+        Title="Data Mining GUI - Patient Browser" Height="650" Width="1150"
         WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
@@ -78,6 +78,7 @@
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
@@ -101,20 +102,36 @@
                                   Checked="AnonymizeCheckBox_Changed"
                                   Unchecked="AnonymizeCheckBox_Changed"/>
 
-                        <Button x:Name="CancelLoadButton" 
+                        <Button x:Name="MrnFilterButton" 
                                 Grid.Column="2"
+                                Content="📋 MRN List Filter"
+                                Click="MrnListFilter_Click"
+                                Style="{StaticResource ActionButtonStyle}"
+                                ToolTip="Paste a list of MRNs to restrict which patients are displayed"/>
+                        <TextBlock x:Name="MrnFilterActiveText" 
+                                   Grid.Column="2"
+                                   Text=""
+                                   VerticalAlignment="Center"
+                                   Foreground="#1565C0"
+                                   FontSize="11"
+                                   Margin="0,0,0,0"
+                                   HorizontalAlignment="Right"
+                                   Visibility="Collapsed"/>
+
+                        <Button x:Name="CancelLoadButton" 
+                                Grid.Column="3"
                                 Content="Cancel" 
                                 Click="CancelLoad_Click"
                                 Style="{StaticResource ActionButtonStyle}"
                                 Visibility="Collapsed"/>
 
-                        <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="20,0,0,0">
+                        <StackPanel Grid.Column="4" Orientation="Horizontal" Margin="20,0,0,0">
                             <TextBlock x:Name="LoadProgressText" Text="" VerticalAlignment="Center" Margin="0,0,10,0"/>
                             <ProgressBar x:Name="LoadProgressBar" Width="200" Height="18" 
                                          Minimum="0" Maximum="100" Value="0" Visibility="Collapsed"/>
                         </StackPanel>
 
-                        <TextBlock Grid.Column="4" x:Name="SelectedFilesText" Text="0 files selected" 
+                        <TextBlock Grid.Column="5" x:Name="SelectedFilesText" Text="0 files selected" 
                                    VerticalAlignment="Center" Foreground="#666666"/>
                     </Grid>
                 </Border>

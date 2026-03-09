@@ -47,6 +47,9 @@ namespace DataMiningGUI
         // Anonymization
         private bool _isAnonymized = false;
 
+        // MRN whitelist filter
+        private HashSet<string> _mrnWhitelist = null;
+
         #endregion
 
         #region Constructor
@@ -205,6 +208,44 @@ namespace DataMiningGUI
         {
             _isAnonymized = AnonymizeCheckBox.IsChecked == true;
             UpdateDisplayedPatients();
+        }
+
+        /// <summary>
+        /// Opens the MRN list filter window to paste a whitelist of MRNs
+        /// </summary>
+        private void MrnListFilter_Click(object sender, RoutedEventArgs e)
+        {
+            var mrnFilterWindow = new MrnListFilterWindow(_mrnWhitelist)
+            {
+                Owner = this
+            };
+
+            if (mrnFilterWindow.ShowDialog() == true)
+            {
+                _mrnWhitelist = mrnFilterWindow.ResultMrnSet;
+                _currentPage = 1;
+                UpdateMrnFilterUI();
+                UpdateDisplayedPatients();
+            }
+        }
+
+        /// <summary>
+        /// Updates the MRN filter button appearance based on whether a whitelist is active
+        /// </summary>
+        private void UpdateMrnFilterUI()
+        {
+            if (_mrnWhitelist != null && _mrnWhitelist.Count > 0)
+            {
+                MrnFilterButton.Background = System.Windows.Media.Brushes.SteelBlue;
+                MrnFilterButton.Foreground = System.Windows.Media.Brushes.White;
+                MrnFilterButton.Content = $"📋 MRN Filter ({_mrnWhitelist.Count})";
+            }
+            else
+            {
+                MrnFilterButton.ClearValue(Button.BackgroundProperty);
+                MrnFilterButton.ClearValue(Button.ForegroundProperty);
+                MrnFilterButton.Content = "📋 MRN List Filter";
+            }
         }
 
         /// <summary>
@@ -469,6 +510,15 @@ namespace DataMiningGUI
                 {
                     if (patient.MRN == null ||
                         patient.MRN.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) < 0)
+                    {
+                        continue;
+                    }
+                }
+
+                // Apply MRN whitelist filter if active
+                if (_mrnWhitelist != null && _mrnWhitelist.Count > 0)
+                {
+                    if (patient.MRN == null || !_mrnWhitelist.Contains(patient.MRN.Trim()))
                     {
                         continue;
                     }
