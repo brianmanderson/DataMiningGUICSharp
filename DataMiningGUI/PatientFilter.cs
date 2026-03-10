@@ -556,7 +556,11 @@ namespace DataMiningGUI
                     return context.Plan?.PlanName ?? string.Empty;
 
                 case FilterField.DiagnosisCode:
-                    return string.Join(",", context.Course?.DiagnosisCodes) ?? string.Empty;
+                    if (context.Course?.DiagnosisCodes == null)
+                        return string.Empty;
+                    return string.Join(",", context.Course.DiagnosisCodes
+                        .Select(d => d.DiagnosisCode)
+                        .Where(d => !string.IsNullOrWhiteSpace(d)));
 
                 case FilterField.Gender:
                     return context.Patient != null

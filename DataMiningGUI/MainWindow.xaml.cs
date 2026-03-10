@@ -567,7 +567,8 @@ namespace DataMiningGUI
                                 PlannedBy = "N/A",
                                 ApprovalStatus = "N/A",
                                 ReviewDateTime = "N/A",
-                                ReviewDateTimeSortable = DateTime.MinValue
+                                ReviewDateTimeSortable = DateTime.MinValue,
+                                DiagnosisCode = FormatDiagnosisCodes(course)
                             });
                         }
                     }
@@ -595,7 +596,8 @@ namespace DataMiningGUI
                         PlannedBy = "N/A",
                         ApprovalStatus = "N/A",
                         ReviewDateTime = "N/A",
-                        ReviewDateTimeSortable = DateTime.MinValue
+                        ReviewDateTimeSortable = DateTime.MinValue,
+                        DiagnosisCode = "N/A"
                     });
                 }
             }
@@ -719,7 +721,8 @@ namespace DataMiningGUI
                 PlannedBy = plan.PlannedBy ?? "N/A",
                 ApprovalStatus = plan.Review?.ApprovalStatus ?? "N/A",
                 ReviewDateTime = FormatReviewDateTime(plan.Review?.ReviewTime),
-                ReviewDateTimeSortable = GetSortableDateTime(plan.Review?.ReviewTime)
+                ReviewDateTimeSortable = GetSortableDateTime(plan.Review?.ReviewTime),
+                DiagnosisCode = FormatDiagnosisCodes(course)
             };
         }
 
@@ -830,6 +833,22 @@ namespace DataMiningGUI
             string originalMRN = item.MRN;
             item.MRN = DeterministicHashString("PatientID:" + originalMRN);
             item.PatientName = DeterministicHashString("PatientName:" + originalMRN);
+        }
+
+        /// <summary>
+        /// Formats diagnosis codes from a course into a comma-separated string
+        /// </summary>
+        private static string FormatDiagnosisCodes(CourseClass course)
+        {
+            if (course?.DiagnosisCodes == null || !course.DiagnosisCodes.Any())
+                return "N/A";
+
+            var codes = course.DiagnosisCodes
+                .Select(d => d.DiagnosisCode)
+                .Where(d => !string.IsNullOrWhiteSpace(d))
+                .ToList();
+
+            return codes.Any() ? string.Join(", ", codes) : "N/A";
         }
 
         /// <summary>
@@ -947,6 +966,7 @@ namespace DataMiningGUI
         private DateTime _reviewDateTimeSortable;
         private string _energy;
         private string _technique;
+        private string _diagnosisCode;
 
         public string MRN
         {
@@ -1036,6 +1056,12 @@ namespace DataMiningGUI
         {
             get => _technique;
             set { _technique = value; OnPropertyChanged(nameof(Technique)); }
+        }
+
+        public string DiagnosisCode
+        {
+            get => _diagnosisCode;
+            set { _diagnosisCode = value; OnPropertyChanged(nameof(DiagnosisCode)); }
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

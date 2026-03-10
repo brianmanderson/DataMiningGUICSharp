@@ -61,6 +61,12 @@ namespace DataMiningGUI
                 GetValue = item => item.CourseName
             });
 
+            _exportFields.Add("DiagnosisCode", new ExportFieldInfo
+            {
+                DisplayName = "Diagnosis Code",
+                GetValue = item => item.DiagnosisCode
+            });
+
             _exportFields.Add("PlanName", new ExportFieldInfo
             {
                 DisplayName = "Plan Name",
@@ -136,7 +142,7 @@ namespace DataMiningGUI
             // Create checkboxes in the defined order
             var fieldKeys = new[]
             {
-                "MRN", "PatientName", "CourseName", "PlanName", "PlanType",
+                "MRN", "PatientName", "CourseName", "DiagnosisCode", "PlanName", "PlanType",
                 "MachineName", "NumberOfFractions", "DosePerFraction", "TotalDose",
                 "Energy", "Technique", "PlannedBy", "ApprovalStatus", "ReviewDateTime"
             };
